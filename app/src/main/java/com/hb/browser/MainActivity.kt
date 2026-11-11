@@ -8,6 +8,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -22,6 +24,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.cefrium.CefriumBrowser
 import com.cefrium.CefriumProfile
+import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private val gold = Color.rgb(212, 175, 55)
@@ -39,6 +42,26 @@ class MainActivity : Activity() {
     private var activeTab: BrowserTab? = null
     private var nextTabId = 1
     private val prefs by lazy { getSharedPreferences("hb_browser", Context.MODE_PRIVATE) }
+    private val licenseExecutor = Executors.newSingleThreadExecutor()
+    private val licenseHandler = Handler(Looper.getMainLooper())
+    private val licenseCheck = object : Runnable {
+        override fun run() {
+            licenseExecutor.execute {
+                val state = ActivationManager.check(this@MainActivity)
+                if (state != ActivationManager.State.ACTIVE &&
+                    state != ActivationManager.State.OFFLINE_GRACE
+                ) {
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed) {
+                            startActivity(android.content.Intent(this@MainActivity, ActivationActivity::class.java))
+                            finish()
+                        }
+                    }
+                }
+            }
+            licenseHandler.postDelayed(this, 6L * 60 * 60 * 1000)
+        }
+    }
 
     private data class BrowserTab(
         val id: Int,
@@ -486,12 +509,15 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        licenseHandler.removeCallbacks(licenseCheck)
         tabs.forEach { it.browser.onPause() }
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
+        licenseHandler.removeCallbacks(licenseCheck)
+        licenseCheck.run()
         tabs.forEach { tab ->
             tab.browser.onResume()
             tab.browser.setPageVisible(activeTab?.id == tab.id)
@@ -511,6 +537,8 @@ class MainActivity : Activity() {
         }
         tabs.clear()
         activeTab = null
+        licenseHandler.removeCallbacks(licenseCheck)
+        licenseExecutor.shutdownNow()
         super.onDestroy()
     }
 }
