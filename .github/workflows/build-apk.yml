@@ -21,27 +21,26 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Install Android SDK packages
+      - name: Verify preinstalled Android SDK
         shell: bash
         run: |
-          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          echo "Android SDK root: $SDK_ROOT"
-          if [ ! -d "$SDK_ROOT" ]; then
-            echo "::error::Android SDK directory not found: $SDK_ROOT"
-            exit 1
-          fi
-          SDKMANAGER="$(find "$SDK_ROOT" -type f -name sdkmanager -print -quit)"
-          if [ -z "$SDKMANAGER" ]; then
-            echo "::error::sdkmanager was not found under $SDK_ROOT"
-            find "$SDK_ROOT" -maxdepth 3 -type d -print
-            exit 1
-          fi
-          chmod +x "$SDKMANAGER"
-          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses
-          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID SDK: $SDK_ROOT"
+          test -d "$SDK_ROOT/platforms/android-35" || { echo "::error::Android SDK Platform 35 is not installed on this runner"; ls -la "$SDK_ROOT/platforms" || true; exit 1; }
+          test -d "$SDK_ROOT/build-tools/35.0.0" || { echo "::error::Android Build Tools 35.0.0 are not installed on this runner"; ls -la "$SDK_ROOT/build-tools" || true; exit 1; }
+          echo "Android SDK Platform 35 and Build Tools 35.0.0 are available."
 
       - name: Build debug APK
-        run: gradle assembleDebug
+        run: gradle --no-daemon assembleDebug
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          ls -lh "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
