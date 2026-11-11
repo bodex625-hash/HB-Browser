@@ -54,7 +54,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         address = EditText(this).apply {
-            singleLine = true
+            setSingleLine(true)
             textSize = 14f
             setTextColor(Color.WHITE)
             setHintTextColor(Color.LTGRAY)
