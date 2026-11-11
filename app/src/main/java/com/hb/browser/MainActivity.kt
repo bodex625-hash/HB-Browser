@@ -213,26 +213,7 @@ class MainActivity : Activity() {
         instance.setZoomLevel(zoomPercentToLevel(prefs.getInt("page_zoom", 80)))
 
         val tab = BrowserTab(nextTabId++, instance)
-        instance.setOnUrlChangedListener { url ->
-            runOnUiThread {
-                tab.url = url
-                if (activeTab?.id == tab.id && !isFinishing) address.setText(url)
-                refreshTabStrip()
-            }
-        }
-        instance.setOnTitleChangedListener { title ->
-            runOnUiThread {
-                if (title.isNotBlank()) tab.title = title
-                refreshTabStrip()
-            }
-        }
-        instance.setOnLoadingStateChangedListener { isLoading, _, _ ->
-            runOnUiThread {
-                if (activeTab?.id == tab.id && !isFinishing) {
-                    progress.visibility = if (isLoading) View.VISIBLE else View.GONE
-                }
-            }
-        }
+        configureTab(tab)
 
         tabs.add(tab)
         webContainer.addView(
@@ -241,6 +222,76 @@ class MainActivity : Activity() {
         )
         selectTab(tab)
         instance.loadUrl(initialUrl)
+    }
+
+    private fun configureTab(tab: BrowserTab) {
+        val browser = tab.browser
+        browser.setOnUrlChangedListener { url ->
+            runOnUiThread {
+                tab.url = url
+                if (activeTab?.id == tab.id && !isFinishing) address.setText(url)
+                refreshTabStrip()
+            }
+        }
+        browser.setOnTitleChangedListener { title ->
+            runOnUiThread {
+                if (title.isNotBlank()) tab.title = title
+                refreshTabStrip()
+            }
+        }
+        browser.setOnLoadingStateChangedListener { isLoading, _, _ ->
+            runOnUiThread {
+                if (activeTab?.id == tab.id && !isFinishing) {
+                    progress.visibility = if (isLoading) View.VISIBLE else View.GONE
+                }
+            }
+        }
+        browser.setPopupHandler(object : CefriumBrowser.PopupHandler {
+            override fun onCreateWindow(
+                popup: CefriumBrowser,
+                targetUrl: String,
+                userGesture: Boolean
+            ): Boolean {
+                runOnUiThread {
+                    val popupTab = BrowserTab(nextTabId++, popup, url = targetUrl)
+                    configureTab(popupTab)
+                    tabs.add(popupTab)
+                    webContainer.addView(
+                        popup.surfaceContainer,
+                        FrameLayout.LayoutParams(-1, -1)
+                    )
+                    selectTab(popupTab)
+                }
+                return true
+            }
+
+            override fun onCloseWindow(popup: CefriumBrowser) {
+                runOnUiThread { removePopupTab(popup) }
+            }
+
+            override fun onOpenPopup(targetUrl: String, userGesture: Boolean): Boolean {
+                // Keep unhandled popup navigation inside this browser, never launch Chrome.
+                return false
+            }
+        })
+    }
+
+    private fun removePopupTab(popup: CefriumBrowser) {
+        val tab = tabs.firstOrNull { it.browser === popup } ?: return
+        val index = tabs.indexOf(tab)
+        val wasActive = activeTab?.id == tab.id
+        webContainer.removeView(popup.surfaceContainer)
+        tabs.remove(tab)
+        if (wasActive) {
+            if (tabs.isEmpty()) {
+                activeTab = null
+                createNewTab()
+            } else {
+                selectTab(tabs[(index - 1).coerceAtLeast(0)])
+            }
+        } else {
+            refreshTabStrip()
+        }
     }
 
     private fun selectTab(tab: BrowserTab) {
