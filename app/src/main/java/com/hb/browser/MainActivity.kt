@@ -166,12 +166,15 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.WHITE)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.databaseEnabled = true
             settings.loadsImagesAutomatically = true
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
             settings.textZoom = 80
             settings.cacheMode = WebSettings.LOAD_DEFAULT
+            settings.blockNetworkLoads = false
+            settings.blockNetworkImage = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) settings.offscreenPreRaster = true
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
             settings.setSupportZoom(true)
             settings.setSupportMultipleWindows(true)
             settings.javaScriptCanOpenWindowsAutomatically = true
@@ -222,44 +225,20 @@ class MainActivity : Activity() {
                         address.setText(url ?: "")
                         tabLabel.text = "${tabs.size} تبويب"
                     }
-                    // Enlarge accessible close/dismiss controls on survey pages without moving them.
+                    // One lightweight pass only; avoid continuous DOM scans on dynamic survey pages.
                     view?.evaluateJavascript(
                         """(function() {
-                            function hbExpandCloseTargets() {
-                                var nodes = document.querySelectorAll('button,[role="button"],a,[aria-label],[title],input[type="button"],input[type="submit"]');
-                                nodes.forEach(function(el) {
-                                    var label = ((el.getAttribute('aria-label') || '') + ' ' +
-                                        (el.getAttribute('title') || '') + ' ' +
-                                        (el.innerText || el.value || '')).trim().toLowerCase();
-                                    var isClose = /\\b(close|dismiss|cancel|exit)\\b/.test(label) ||
-                                        /^(x|×|✕|✖)$/.test(label);
-                                    if (isClose && !el.dataset.hbTouchTarget) {
-                                        el.dataset.hbTouchTarget = '1';
-                                        el.style.setProperty('min-width', '48px', 'important');
-                                        el.style.setProperty('min-height', '48px', 'important');
-                                        el.style.setProperty('padding', '10px', 'important');
-                                        el.style.setProperty('box-sizing', 'border-box', 'important');
-                                        el.style.setProperty('touch-action', 'manipulation', 'important');
-                                    }
-                                });
-                            }
-                            hbExpandCloseTargets();
-                            if (!window.__hbCloseObserver) {
-                                var hbScanQueued = false;
-                                window.__hbCloseObserver = new MutationObserver(function() {
-                                    if (hbScanQueued) return;
-                                    hbScanQueued = true;
-                                    requestAnimationFrame(function() {
-                                        hbScanQueued = false;
-                                        hbExpandCloseTargets();
-                                    });
-                                });
-                                window.__hbCloseObserver.observe(document.documentElement, {
-                                    childList: true,
-                                    subtree: true,
-                                    attributes: true,
-                                    attributeFilter: ['aria-label', 'title']
-                                });
+                            var nodes = document.querySelectorAll('button[aria-label],button[title],[role="button"][aria-label],[role="button"][title],a[aria-label],a[title]');
+                            for (var i = 0; i < nodes.length; i++) {
+                                var el = nodes[i];
+                                var label = ((el.getAttribute('aria-label') || '') + ' ' +
+                                    (el.getAttribute('title') || '')).trim().toLowerCase();
+                                if (/\b(close|dismiss|cancel|exit)\b/.test(label) && !el.dataset.hbTouchTarget) {
+                                    el.dataset.hbTouchTarget = '1';
+                                    el.style.setProperty('min-width', '48px', 'important');
+                                    el.style.setProperty('min-height', '48px', 'important');
+                                    el.style.setProperty('touch-action', 'manipulation', 'important');
+                                }
                             }
                         })();""",
                         null
