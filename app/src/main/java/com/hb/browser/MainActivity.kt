@@ -173,8 +173,6 @@ class MainActivity : Activity() {
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.blockNetworkLoads = false
             settings.blockNetworkImage = false
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) settings.offscreenPreRaster = true
-            setLayerType(View.LAYER_TYPE_HARDWARE, null)
             settings.setSupportZoom(true)
             settings.setSupportMultipleWindows(true)
             settings.javaScriptCanOpenWindowsAutomatically = true
@@ -225,24 +223,7 @@ class MainActivity : Activity() {
                         address.setText(url ?: "")
                         tabLabel.text = "${tabs.size} تبويب"
                     }
-                    // One lightweight pass only; avoid continuous DOM scans on dynamic survey pages.
-                    view?.evaluateJavascript(
-                        """(function() {
-                            var nodes = document.querySelectorAll('button[aria-label],button[title],[role="button"][aria-label],[role="button"][title],a[aria-label],a[title]');
-                            for (var i = 0; i < nodes.length; i++) {
-                                var el = nodes[i];
-                                var label = ((el.getAttribute('aria-label') || '') + ' ' +
-                                    (el.getAttribute('title') || '')).trim().toLowerCase();
-                                if (/\b(close|dismiss|cancel|exit)\b/.test(label) && !el.dataset.hbTouchTarget) {
-                                    el.dataset.hbTouchTarget = '1';
-                                    el.style.setProperty('min-width', '48px', 'important');
-                                    el.style.setProperty('min-height', '48px', 'important');
-                                    el.style.setProperty('touch-action', 'manipulation', 'important');
-                                }
-                            }
-                        })();""",
-                        null
-                    )
+
                 }
             }
         }
