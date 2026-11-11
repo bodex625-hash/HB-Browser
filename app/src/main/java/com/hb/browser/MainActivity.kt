@@ -28,6 +28,7 @@ class MainActivity : Activity() {
     private val black = Color.rgb(9, 10, 12)
     private val panel = Color.rgb(23, 25, 29)
     private val muted = Color.rgb(155, 160, 168)
+    private val fixedZoomPercent = 80
 
     private lateinit var address: EditText
     private lateinit var webContainer: FrameLayout
@@ -200,8 +201,8 @@ class MainActivity : Activity() {
     private fun createNewTab(initialUrl: String = "https://www.google.com") {
         val instance = CefriumBrowser.createWithSurface(this, profile)
         instance.setJavaScriptEnabled(true)
-        instance.setPinchToZoomEnabled(true)
-        instance.setZoomLevel(zoomPercentToLevel(prefs.getInt("page_zoom", 80)))
+        instance.setPinchToZoomEnabled(false)
+        instance.setZoomLevel(zoomPercentToLevel(fixedZoomPercent))
 
         val tab = BrowserTab(nextTabId++, instance)
         configureTab(tab)
@@ -232,6 +233,10 @@ class MainActivity : Activity() {
         }
         browser.setOnLoadingStateChangedListener { isLoading, _, _ ->
             runOnUiThread {
+                if (!isLoading && !isFinishing) {
+                    // Re-apply the fixed zoom after every navigation, including survey pages.
+                    browser.setZoomLevel(zoomPercentToLevel(fixedZoomPercent))
+                }
                 if (activeTab?.id == tab.id && !isFinishing) {
                     progress.visibility = if (isLoading) View.VISIBLE else View.GONE
                 }
@@ -382,7 +387,6 @@ class MainActivity : Activity() {
             "إضافة للمفضلة",
             "عرض المفضلة",
             "مسح جميع بيانات التصفح",
-            "تغيير زوم الصفحة",
             "حول HB Browser"
         )
         AlertDialog.Builder(this)
@@ -392,8 +396,7 @@ class MainActivity : Activity() {
                     0 -> saveBookmark()
                     1 -> showBookmarks()
                     2 -> confirmClearAllData()
-                    3 -> showPageZoomDialog()
-                    4 -> showAboutDialog()
+                    3 -> showAboutDialog()
                 }
             }
             .show()
@@ -457,23 +460,6 @@ class MainActivity : Activity() {
 
     private fun zoomPercentToLevel(percent: Int): Double =
         kotlin.math.ln(percent / 100.0) / kotlin.math.ln(1.2)
-
-    private fun showPageZoomDialog() {
-        val levels = intArrayOf(80, 90, 100, 110, 125)
-        val current = prefs.getInt("page_zoom", 80)
-        val selected = levels.indexOf(current).let { if (it >= 0) it else 0 }
-        AlertDialog.Builder(this)
-            .setTitle("زوم صفحات الإنترنت")
-            .setSingleChoiceItems(levels.map { "$it%" }.toTypedArray(), selected) { dialog, which ->
-                val percent = levels[which]
-                prefs.edit().putInt("page_zoom", percent).apply()
-                tabs.forEach { it.browser.setZoomLevel(zoomPercentToLevel(percent)) }
-                Toast.makeText(this, "تم ضبط زوم الصفحة على $percent%", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
-            }
-            .setNegativeButton("إغلاق", null)
-            .show()
-    }
 
     private fun saveBookmark() {
         val url = activeTab?.browser?.url ?: return
