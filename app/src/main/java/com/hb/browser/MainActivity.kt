@@ -195,6 +195,35 @@ class MainActivity : Activity() {
                         address.setText(url ?: "")
                         tabLabel.text = "${tabs.size} تبويب"
                     }
+                    // Enlarge accessible close/dismiss controls on survey pages without moving them.
+                    view?.evaluateJavascript(
+                        """(function() {
+                            function hbExpandCloseTargets() {
+                                var nodes = document.querySelectorAll('button,[role="button"],a,[aria-label],[title],input[type="button"],input[type="submit"]');
+                                nodes.forEach(function(el) {
+                                    var label = ((el.getAttribute('aria-label') || '') + ' ' +
+                                        (el.getAttribute('title') || '') + ' ' +
+                                        (el.innerText || el.value || '')).trim().toLowerCase();
+                                    var isClose = /\\b(close|dismiss|cancel|exit)\\b/.test(label) ||
+                                        /^(x|×|✕|✖)$/.test(label);
+                                    if (isClose && !el.dataset.hbTouchTarget) {
+                                        el.dataset.hbTouchTarget = '1';
+                                        el.style.setProperty('min-width', '48px', 'important');
+                                        el.style.setProperty('min-height', '48px', 'important');
+                                        el.style.setProperty('padding', '10px', 'important');
+                                        el.style.setProperty('box-sizing', 'border-box', 'important');
+                                        el.style.setProperty('touch-action', 'manipulation', 'important');
+                                    }
+                                });
+                            }
+                            hbExpandCloseTargets();
+                            if (!window.__hbCloseObserver) {
+                                window.__hbCloseObserver = new MutationObserver(hbExpandCloseTargets);
+                                window.__hbCloseObserver.observe(document.documentElement, {childList:true,subtree:true,attributes:true,attributeFilter:['aria-label','title']});
+                            }
+                        })();""",
+                        null
+                    )
                 }
             }
         }
