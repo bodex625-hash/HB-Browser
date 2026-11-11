@@ -178,6 +178,9 @@ class MainActivity : Activity() {
         val instance = CefriumBrowser.createWithSurface(this, profile)
         instance.setJavaScriptEnabled(true)
         instance.setPinchToZoomEnabled(true)
+        // Persisted page zoom: 80% by default. Cefrium uses 0.0 for 100%
+        // and a 1.2 multiplier per zoom level.
+        instance.setZoomLevel(zoomPercentToLevel(prefs.getInt("page_zoom", 80)))
         instance.setOnUrlChangedListener { url ->
             runOnUiThread {
                 if (!isFinishing) address.setText(url)
@@ -226,6 +229,7 @@ class MainActivity : Activity() {
             "مسح الكاش",
             "مسح كوكيز الموقع الحالي",
             "مسح بيانات الموقع الحالي",
+            "تغيير زوم الصفحة",
             "حول HB Chromium"
         )
         AlertDialog.Builder(this)
@@ -240,12 +244,33 @@ class MainActivity : Activity() {
                     }
                     3 -> clearCurrentSiteCookies()
                     4 -> clearCurrentSiteData()
-                    5 -> AlertDialog.Builder(this)
+                    5 -> showPageZoomDialog()
+                    6 -> AlertDialog.Builder(this)
                         .setMessage("HB Browser – Chromium Edition\nنسخة تجريبية بمحرك Chromium مدمج.")
                         .setPositiveButton("حسناً", null)
                         .show()
                 }
             }
+            .show()
+    }
+
+    private fun zoomPercentToLevel(percent: Int): Double =
+        kotlin.math.ln(percent / 100.0) / kotlin.math.ln(1.2)
+
+    private fun showPageZoomDialog() {
+        val levels = intArrayOf(80, 90, 100, 110, 125)
+        val current = prefs.getInt("page_zoom", 80)
+        val selected = levels.indexOf(current).let { if (it >= 0) it else 0 }
+        AlertDialog.Builder(this)
+            .setTitle("زوم صفحات الإنترنت")
+            .setSingleChoiceItems(levels.map { "$it%" }.toTypedArray(), selected) { dialog, which ->
+                val percent = levels[which]
+                prefs.edit().putInt("page_zoom", percent).apply()
+                browser?.setZoomLevel(zoomPercentToLevel(percent))
+                Toast.makeText(this, "تم ضبط زوم الصفحة على $percent%", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .setNegativeButton("إغلاق", null)
             .show()
     }
 
