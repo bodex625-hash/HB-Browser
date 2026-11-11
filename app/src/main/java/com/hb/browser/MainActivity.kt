@@ -3,6 +3,7 @@ package com.hb.browser
 import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
+import android.os.Build
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -172,6 +173,11 @@ class MainActivity : Activity() {
             settings.textZoom = 80
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.setSupportZoom(true)
+            settings.setSupportMultipleWindows(true)
+            settings.javaScriptCanOpenWindowsAutomatically = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                settings.safeBrowsingEnabled = true
+            }
             settings.builtInZoomControls = true
             settings.displayZoomControls = false
             isFocusableInTouchMode = true
@@ -187,6 +193,27 @@ class MainActivity : Activity() {
                         this@MainActivity.progress.progress = newProgress
                         this@MainActivity.progress.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
                     }
+                }
+
+                // Support legitimate pop-up windows opened by a direct user action.
+                override fun onCreateWindow(
+                    view: WebView?,
+                    isDialog: Boolean,
+                    isUserGesture: Boolean,
+                    resultMsg: android.os.Message?
+                ): Boolean {
+                    if (!isUserGesture || resultMsg == null) return false
+                    val popup = createWebView()
+                    tabs.add(popup)
+                    activeTab = tabs.lastIndex
+                    webContainer.removeAllViews()
+                    webContainer.addView(popup, LinearLayout.LayoutParams(-1, -1))
+                    address.setText("")
+                    tabLabel.text = "${tabs.size} تبويب"
+                    val transport = resultMsg.obj as WebView.WebViewTransport
+                    transport.webView = popup
+                    resultMsg.sendToTarget()
+                    return true
                 }
             }
             webViewClient = object : WebViewClient() {
@@ -218,8 +245,21 @@ class MainActivity : Activity() {
                             }
                             hbExpandCloseTargets();
                             if (!window.__hbCloseObserver) {
-                                window.__hbCloseObserver = new MutationObserver(hbExpandCloseTargets);
-                                window.__hbCloseObserver.observe(document.documentElement, {childList:true,subtree:true,attributes:true,attributeFilter:['aria-label','title']});
+                                var hbScanQueued = false;
+                                window.__hbCloseObserver = new MutationObserver(function() {
+                                    if (hbScanQueued) return;
+                                    hbScanQueued = true;
+                                    requestAnimationFrame(function() {
+                                        hbScanQueued = false;
+                                        hbExpandCloseTargets();
+                                    });
+                                });
+                                window.__hbCloseObserver.observe(document.documentElement, {
+                                    childList: true,
+                                    subtree: true,
+                                    attributes: true,
+                                    attributeFilter: ['aria-label', 'title']
+                                });
                             }
                         })();""",
                         null
