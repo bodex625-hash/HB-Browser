@@ -38,7 +38,7 @@ async function handleApi(request, env) {
     const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
     const token = [...tokenBytes].map(x => x.toString(16).padStart(2,"0")).join("");
     const tokenHash = await sha256(token);
-    const update = await env.DB.prepare("UPDATE licenses SET device_hash = ?, activated_at = COALESCE(activated_at, ?), expires_at = ?, token_hash = ? WHERE code_hash = ? AND revoked = 0 AND (device_hash IS NULL OR device_hash = ?)").bind(dh, now, expires, tokenHash, ch, dh).run();
+    const update = await env.DB.prepare("UPDATE licenses SET device_hash = ?, activated_at = COALESCE(activated_at, ?), expires_at = ?, token_hash = ?, device_model = ?, device_manufacturer = ?, android_version = ?, device_updated_at = ? WHERE code_hash = ? AND revoked = 0 AND (device_hash IS NULL OR device_hash = ?)").bind(dh, now, expires, tokenHash, String(input.device_model || "").slice(0,100), String(input.device_manufacturer || "").slice(0,100), String(input.android_version || "").slice(0,40), now, ch, dh).run();
     if (!update.meta.changes) return json({ok:false,message:"تعذر ربط الكود بهذا الجهاز"},409);
     return json({ok:true,token,expires_at:expires === null ? "دائم" : new Date(expires*1000).toISOString().slice(0,10)});
   }
