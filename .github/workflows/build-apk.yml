@@ -2,7 +2,7 @@ name: Build HB Browser Chromium Prototype
 
 on:
   push:
-    branches: [ "chromium-prototype" ]
+    branches: [ "chromium-prototype", "license-system" ]
   workflow_dispatch:
 
 jobs:
