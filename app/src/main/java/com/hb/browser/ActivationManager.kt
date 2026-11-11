@@ -53,7 +53,12 @@ object ActivationManager {
         }
     }
     fun activate(context: Context, code: String): String {
-        val result = request("activate", JSONObject().put("code", code.trim().uppercase()).put("device_id", deviceId(context)))
+        val result = request("activate", JSONObject()
+            .put("code", code.trim().uppercase())
+            .put("device_id", deviceId(context))
+            .put("device_model", android.os.Build.MODEL ?: "Unknown")
+            .put("device_manufacturer", android.os.Build.MANUFACTURER ?: "Unknown")
+            .put("android_version", android.os.Build.VERSION.RELEASE ?: "Unknown"))
         if (!result.optBoolean("ok")) throw IllegalArgumentException(result.optString("message", "الكود غير صالح"))
         val token = result.optString("token")
         if (token.isBlank()) throw IllegalStateException("لم يصل رمز التفعيل من الخادم")
