@@ -123,7 +123,7 @@ class MainActivity : Activity() {
             browser?.let { if (it.canGoBack()) it.goBack() }
         })
         nav.addView(makeAction("›", 40, 20) {
-            browser?.let { if (it.canGoForward()) it.goForward() }
+            browser?.goForward()
         })
         nav.addView(makeAction("↻", 40, 18) { browser?.reload() })
 
