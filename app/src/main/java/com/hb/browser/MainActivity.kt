@@ -15,6 +15,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -31,9 +32,19 @@ class MainActivity : Activity() {
     private lateinit var address: EditText
     private lateinit var webContainer: FrameLayout
     private lateinit var progress: ProgressBar
+    private lateinit var tabStrip: LinearLayout
     private lateinit var profile: CefriumProfile
-    private var browser: CefriumBrowser? = null
+    private val tabs = mutableListOf<BrowserTab>()
+    private var activeTab: BrowserTab? = null
+    private var nextTabId = 1
     private val prefs by lazy { getSharedPreferences("hb_browser", Context.MODE_PRIVATE) }
+
+    private data class BrowserTab(
+        val id: Int,
+        val browser: CefriumBrowser,
+        var title: String = "تبويب جديد",
+        var url: String = ""
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,8 +57,7 @@ class MainActivity : Activity() {
         profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DEFAULT)
 
         buildInterface()
-        createChromiumBrowser()
-        browser?.loadUrl("https://www.google.com")
+        createNewTab()
     }
 
     private fun dp(value: Int): Int =
@@ -114,18 +124,40 @@ class MainActivity : Activity() {
         addressRow.addView(makeAction("⋮", 42) { showMenu() })
         root.addView(addressRow)
 
+        val tabRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(-1, dp(43)).apply {
+                topMargin = dp(5)
+                bottomMargin = dp(2)
+            }
+        }
+        val tabScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            layoutParams = LinearLayout.LayoutParams(0, -1, 1f)
+        }
+        tabStrip = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        tabScroll.addView(tabStrip)
+        tabRow.addView(tabScroll)
+        tabRow.addView(makeAction("+", 42, 23) { createNewTab() })
+        root.addView(tabRow)
+
         val nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(2), dp(6), dp(2), dp(6))
+            setPadding(dp(2), dp(3), dp(2), dp(5))
         }
         nav.addView(makeAction("‹", 40, 20) {
-            browser?.let { if (it.canGoBack()) it.goBack() }
+            activeTab?.browser?.let { if (it.canGoBack()) it.goBack() }
         })
         nav.addView(makeAction("›", 40, 20) {
-            browser?.goForward()
+            activeTab?.browser?.let { if (it.canGoForward()) it.goForward() }
         })
-        nav.addView(makeAction("↻", 40, 18) { browser?.reload() })
+        nav.addView(makeAction("↻", 40, 18) { activeTab?.browser?.reload() })
 
         val engineLabel = TextView(this).apply {
             text = "CHROMIUM"
@@ -174,37 +206,118 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun createChromiumBrowser() {
+    private fun createNewTab(initialUrl: String = "https://www.google.com") {
         val instance = CefriumBrowser.createWithSurface(this, profile)
         instance.setJavaScriptEnabled(true)
         instance.setPinchToZoomEnabled(true)
-        // Persisted page zoom: 80% by default. Cefrium uses 0.0 for 100%
-        // and a 1.2 multiplier per zoom level.
         instance.setZoomLevel(zoomPercentToLevel(prefs.getInt("page_zoom", 80)))
+
+        val tab = BrowserTab(nextTabId++, instance)
         instance.setOnUrlChangedListener { url ->
             runOnUiThread {
-                if (!isFinishing) address.setText(url)
+                tab.url = url
+                if (activeTab?.id == tab.id && !isFinishing) address.setText(url)
+                refreshTabStrip()
             }
         }
         instance.setOnTitleChangedListener { title ->
             runOnUiThread {
-                if (!isFinishing && title.isNotBlank()) {
-                    // Keep the address bar stable; the page title is available to the engine.
-                }
+                if (title.isNotBlank()) tab.title = title
+                refreshTabStrip()
             }
         }
         instance.setOnLoadingStateChangedListener { isLoading, _, _ ->
             runOnUiThread {
-                if (!isFinishing) {
+                if (activeTab?.id == tab.id && !isFinishing) {
                     progress.visibility = if (isLoading) View.VISIBLE else View.GONE
                 }
             }
         }
-        browser = instance
+
+        tabs.add(tab)
         webContainer.addView(
             instance.surfaceContainer,
             FrameLayout.LayoutParams(-1, -1)
         )
+        selectTab(tab)
+        instance.loadUrl(initialUrl)
+    }
+
+    private fun selectTab(tab: BrowserTab) {
+        activeTab = tab
+        tabs.forEach { item ->
+            val selected = item.id == tab.id
+            item.browser.surfaceContainer.visibility = if (selected) View.VISIBLE else View.GONE
+            item.browser.setPageVisible(selected)
+        }
+        address.setText(tab.url)
+        progress.visibility = View.GONE
+        refreshTabStrip()
+    }
+
+    private fun refreshTabStrip() {
+        if (!::tabStrip.isInitialized) return
+        tabStrip.removeAllViews()
+        tabs.forEach { tab ->
+            val selected = activeTab?.id == tab.id
+            val chip = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = rounded(
+                    if (selected) Color.rgb(48, 42, 25) else panel,
+                    if (selected) gold else Color.rgb(48, 45, 36),
+                    11
+                )
+                setPadding(dp(9), 0, dp(5), 0)
+                layoutParams = LinearLayout.LayoutParams(dp(142), dp(34)).apply {
+                    marginEnd = dp(5)
+                }
+                isClickable = true
+                setOnClickListener { selectTab(tab) }
+            }
+            val label = TextView(this).apply {
+                text = tab.title.ifBlank { "تبويب جديد" }
+                textSize = 11f
+                setTextColor(if (selected) gold else Color.WHITE)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, -1, 1f)
+                isClickable = false
+            }
+            val close = TextView(this).apply {
+                text = "×"
+                textSize = 19f
+                setTextColor(muted)
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(dp(25), -1)
+                setOnClickListener { closeTab(tab) }
+            }
+            chip.addView(label)
+            chip.addView(close)
+            tabStrip.addView(chip)
+        }
+    }
+
+    private fun closeTab(tab: BrowserTab) {
+        val index = tabs.indexOfFirst { it.id == tab.id }
+        if (index < 0) return
+        val wasActive = activeTab?.id == tab.id
+        tab.browser.flushCookies()
+        tab.browser.close()
+        tabs.removeAt(index)
+
+        if (tabs.isEmpty()) {
+            activeTab = null
+            createNewTab()
+            return
+        }
+        if (wasActive) {
+            val next = tabs[(index - 1).coerceAtLeast(0)]
+            selectTab(next)
+        } else {
+            refreshTabStrip()
+        }
     }
 
     private fun loadAddress(raw: String) {
@@ -216,7 +329,7 @@ class MainActivity : Activity() {
             value.startsWith("http://") || value.startsWith("https://") -> value
             else -> "https://$value"
         }
-        browser?.loadUrl(url)
+        activeTab?.browser?.loadUrl(url)
         (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
             .hideSoftInputFromWindow(address.windowToken, 0)
         address.clearFocus()
@@ -226,11 +339,9 @@ class MainActivity : Activity() {
         val items = arrayOf(
             "إضافة للمفضلة",
             "عرض المفضلة",
-            "مسح الكاش",
-            "مسح كوكيز الموقع الحالي",
-            "مسح بيانات الموقع الحالي",
+            "مسح جميع بيانات التصفح",
             "تغيير زوم الصفحة",
-            "حول HB Chromium"
+            "حول HB Browser"
         )
         AlertDialog.Builder(this)
             .setTitle("HB Browser")
@@ -238,19 +349,67 @@ class MainActivity : Activity() {
                 when (which) {
                     0 -> saveBookmark()
                     1 -> showBookmarks()
-                    2 -> {
-                        browser?.clearCache()
-                        Toast.makeText(this, "تم مسح الكاش", Toast.LENGTH_SHORT).show()
-                    }
-                    3 -> clearCurrentSiteCookies()
-                    4 -> clearCurrentSiteData()
-                    5 -> showPageZoomDialog()
-                    6 -> AlertDialog.Builder(this)
-                        .setMessage("HB Browser – Chromium Edition\nنسخة تجريبية بمحرك Chromium مدمج.")
-                        .setPositiveButton("حسناً", null)
-                        .show()
+                    2 -> confirmClearAllData()
+                    3 -> showPageZoomDialog()
+                    4 -> showAboutDialog()
                 }
             }
+            .show()
+    }
+
+    private fun confirmClearAllData() {
+        AlertDialog.Builder(this)
+            .setTitle("مسح جميع بيانات التصفح؟")
+            .setMessage("سيتم إغلاق كل علامات التبويب ومسح الكاش والكوكيز وبيانات المواقع وسجل التنقل المفتوح. لا يمكن التراجع عن هذه العملية.")
+            .setNegativeButton("إلغاء", null)
+            .setPositiveButton("مسح الكل") { _, _ -> clearAllBrowsingData() }
+            .show()
+    }
+
+    private fun clearAllBrowsingData() {
+        progress.visibility = View.GONE
+        tabs.toList().forEach { tab ->
+            tab.browser.clearCache()
+            tab.browser.flushCookies()
+            tab.browser.close()
+        }
+        tabs.clear()
+        activeTab = null
+        webContainer.removeAllViews()
+        refreshTabStrip()
+
+        profile.listSiteData { sites ->
+            clearSiteDataSequentially(sites, 0)
+        }
+    }
+
+    private fun clearSiteDataSequentially(
+        sites: List<CefriumProfile.SiteData>,
+        index: Int
+    ) {
+        if (index >= sites.size) {
+            createNewTab()
+            Toast.makeText(
+                this,
+                "تم مسح الكاش والكوكيز وبيانات المواقع وإغلاق كل التبويبات",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        profile.clearSiteData(sites[index].site) {
+            clearSiteDataSequentially(sites, index + 1)
+        }
+    }
+
+    private fun showAboutDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("حول HB Browser")
+            .setMessage(
+                "HB Browser\n" +
+                    "برمجة BODEX و HADI\n" +
+                    "قيد التطوير"
+            )
+            .setPositiveButton("حسناً", null)
             .show()
     }
 
@@ -266,7 +425,7 @@ class MainActivity : Activity() {
             .setSingleChoiceItems(levels.map { "$it%" }.toTypedArray(), selected) { dialog, which ->
                 val percent = levels[which]
                 prefs.edit().putInt("page_zoom", percent).apply()
-                browser?.setZoomLevel(zoomPercentToLevel(percent))
+                tabs.forEach { it.browser.setZoomLevel(zoomPercentToLevel(percent)) }
                 Toast.makeText(this, "تم ضبط زوم الصفحة على $percent%", Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
             }
@@ -274,41 +433,10 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun currentOrigin(): String? {
-        val url = browser?.url ?: return null
-        val uri = Uri.parse(url)
-        val scheme = uri.scheme ?: return null
-        val host = uri.host ?: return null
-        return "$scheme://$host"
-    }
-
-    private fun clearCurrentSiteCookies() {
-        val origin = currentOrigin()
-        if (origin == null) {
-            Toast.makeText(this, "افتح موقعاً أولاً", Toast.LENGTH_SHORT).show()
-            return
-        }
-        browser?.deleteCookies(origin, null)
-        browser?.flushCookies()
-        Toast.makeText(this, "تم طلب حذف كوكيز الموقع الحالي", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun clearCurrentSiteData() {
-        val origin = currentOrigin()
-        if (origin == null) {
-            Toast.makeText(this, "افتح موقعاً أولاً", Toast.LENGTH_SHORT).show()
-            return
-        }
-        profile.clearSiteData(origin) {
-            Toast.makeText(this, "تم مسح بيانات الموقع الحالي", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     private fun saveBookmark() {
-        val url = browser?.url ?: return
-        val title = url
+        val url = activeTab?.browser?.url ?: return
         val all = prefs.getStringSet("bookmarks", emptySet())?.toMutableSet() ?: mutableSetOf()
-        all.add("$title|$url")
+        all.add("$url|$url")
         prefs.edit().putStringSet("bookmarks", all).apply()
         Toast.makeText(this, "تمت الإضافة للمفضلة", Toast.LENGTH_SHORT).show()
     }
@@ -323,33 +451,36 @@ class MainActivity : Activity() {
             .setTitle("المفضلة")
             .setItems(all.map { it.substringBefore("|") }.toTypedArray()) { _, which ->
                 val url = all[which].substringAfter("|", "")
-                if (url.isNotEmpty()) browser?.loadUrl(url)
+                if (url.isNotEmpty()) activeTab?.browser?.loadUrl(url)
             }
             .setNegativeButton("إغلاق", null)
             .show()
     }
 
     override fun onPause() {
-        browser?.onPause()
+        tabs.forEach { it.browser.onPause() }
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
-        browser?.onResume()
+        tabs.forEach { it.browser.onResume() }
+        activeTab?.browser?.setPageVisible(true)
     }
 
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        val current = browser
+        val current = activeTab?.browser
         if (current?.canGoBack() == true) current.goBack() else super.onBackPressed()
     }
 
     override fun onDestroy() {
-        browser?.let {
-            it.flushCookies()
-            it.close()
+        tabs.toList().forEach {
+            it.browser.flushCookies()
+            it.browser.close()
         }
-        browser = null
+        tabs.clear()
+        activeTab = null
         super.onDestroy()
     }
 }
