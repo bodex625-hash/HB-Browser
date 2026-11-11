@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hb-browser-license",
+  "main": "server/cloudflare-worker.js",
+  "compatibility_date": "2026-11-11",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hb-browser-licenses",
+      "database_id": "cc5367c4-b7c3-445b-b907-cacbc4f6442c"
+    }
+  ]
+}
