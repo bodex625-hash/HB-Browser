@@ -41,7 +41,12 @@ object ActivationManager {
         val age = System.currentTimeMillis() - lastOk
         if (age in 0 until CHECK_INTERVAL) return State.ACTIVE
         return try {
-            val result = request("validate", JSONObject().put("token", token).put("device_id", deviceId(context)))
+            val result = request("validate", JSONObject()
+                .put("token", token)
+                .put("device_id", deviceId(context))
+                .put("device_model", android.os.Build.MODEL ?: "Unknown")
+                .put("device_manufacturer", android.os.Build.MANUFACTURER ?: "Unknown")
+                .put("android_version", android.os.Build.VERSION.RELEASE ?: "Unknown"))
             if (result.optBoolean("ok")) {
                 prefs.edit().putLong(LAST_OK, System.currentTimeMillis()).apply(); State.ACTIVE
             } else {
