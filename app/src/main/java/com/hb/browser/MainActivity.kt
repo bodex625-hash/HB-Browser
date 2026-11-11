@@ -168,8 +168,8 @@ class MainActivity : Activity() {
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
                     if (view === currentWeb()) {
-                        progress.progress = newProgress
-                        progress.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
+                        this@MainActivity.progress.progress = newProgress
+                        this@MainActivity.progress.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
                     }
                 }
             }
@@ -177,7 +177,7 @@ class MainActivity : Activity() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     if (view === currentWeb()) {
                         address.setText(url ?: "")
-                        tabLabel.text = "\${tabs.size} تبويب"
+                        tabLabel.text = "${tabs.size} تبويب"
                     }
                 }
             }
@@ -192,7 +192,7 @@ class MainActivity : Activity() {
         activeTab = tabs.lastIndex
         webContainer.removeAllViews()
         webContainer.addView(web, LinearLayout.LayoutParams(-1, -1))
-        tabLabel.text = "\${tabs.size} تبويب"
+        tabLabel.text = "${tabs.size} تبويب"
         loadInto(web, url)
     }
 
@@ -202,7 +202,7 @@ class MainActivity : Activity() {
         webContainer.removeAllViews()
         webContainer.addView(tabs[index], LinearLayout.LayoutParams(-1, -1))
         address.setText(tabs[index].url ?: "")
-        tabLabel.text = "\${tabs.size} تبويب"
+        tabLabel.text = "${tabs.size} تبويب"
     }
 
     private fun loadAddress(raw: String) {
@@ -224,7 +224,7 @@ class MainActivity : Activity() {
 
     private fun showTabs() {
         if (tabs.isEmpty()) return
-        val labels = tabs.mapIndexed { i, w -> "\${i + 1}. \${w.title ?: w.url ?: "تبويب جديد"}" }.toMutableList()
+        val labels = tabs.mapIndexed { i, w -> "${i + 1}. ${w.title ?: w.url ?: "تبويب جديد"}" }.toMutableList()
         labels.add("＋ تبويب جديد")
         AlertDialog.Builder(this).setTitle("التبويبات")
             .setItems(labels.toTypedArray()) { _, which ->
