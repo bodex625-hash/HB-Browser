@@ -155,7 +155,7 @@ class MainActivity : Activity() {
             activeTab?.browser?.let { if (it.canGoBack()) it.goBack() }
         })
         nav.addView(makeAction("›", 40, 20) {
-            activeTab?.browser?.let { if (it.canGoForward()) it.goForward() }
+            activeTab?.browser?.goForward()
         })
         nav.addView(makeAction("↻", 40, 18) { activeTab?.browser?.reload() })
 
@@ -464,8 +464,10 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        tabs.forEach { it.browser.onResume() }
-        activeTab?.browser?.setPageVisible(true)
+        tabs.forEach { tab ->
+            tab.browser.onResume()
+            tab.browser.setPageVisible(activeTab?.id == tab.id)
+        }
     }
 
     @Suppress("DEPRECATION")
