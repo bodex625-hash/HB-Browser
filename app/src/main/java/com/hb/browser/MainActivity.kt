@@ -159,15 +159,6 @@ class MainActivity : Activity() {
         })
         nav.addView(makeAction("↻", 40, 18) { activeTab?.browser?.reload() })
 
-        val engineLabel = TextView(this).apply {
-            text = "CHROMIUM"
-            setTextColor(gold)
-            textSize = 11f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f)
-        }
-        nav.addView(engineLabel)
         root.addView(nav)
 
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
