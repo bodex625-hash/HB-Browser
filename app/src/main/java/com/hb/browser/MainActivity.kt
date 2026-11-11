@@ -87,6 +87,17 @@ class MainActivity : Activity() {
                 } else false
             }
         }
+        val brand = TextView(this).apply {
+            text = "HB"
+            textSize = 18f
+            setTextColor(gold)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            background = rounded(panel, gold, 13)
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(46)).apply { marginEnd = dp(7) }
+            contentDescription = "HB Browser"
+        }
+        addressRow.addView(brand)
         addressRow.addView(address)
         addressRow.addView(makeAction("＋", 42) { addTab("https://www.google.com") })
         addressRow.addView(makeAction("⋮", 42) { showMenu() }.apply {
@@ -160,6 +171,11 @@ class MainActivity : Activity() {
             settings.loadWithOverviewMode = true
             settings.textZoom = 80
             settings.cacheMode = WebSettings.LOAD_DEFAULT
+            settings.setSupportZoom(true)
+            settings.builtInZoomControls = true
+            settings.displayZoomControls = false
+            isFocusableInTouchMode = true
+            isClickable = true
             settings.setGeolocationEnabled(false)
             settings.allowFileAccess = false
             settings.allowContentAccess = false
