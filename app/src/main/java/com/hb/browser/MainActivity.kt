@@ -83,6 +83,7 @@ class MainActivity : Activity() {
         nav.addView(makeButton("‹") { if (currentWeb()?.canGoBack() == true) currentWeb()?.goBack() })
         nav.addView(makeButton("›") { if (currentWeb()?.canGoForward() == true) currentWeb()?.goForward() })
         nav.addView(makeButton("↻") { currentWeb()?.reload() })
+        nav.addView(makeButton("⌫") { clearAllHistory() })
         tabLabel = TextView(this).apply {
             setTextColor(gold)
             textSize = 13f
@@ -195,6 +196,11 @@ class MainActivity : Activity() {
             .setNegativeButton("إغلاق", null).show()
     }
 
+    private fun clearAllHistory() {
+        tabs.forEach { it.clearHistory() }
+        Toast.makeText(this, "تم مسح سجل التصفح من جميع التبويبات", Toast.LENGTH_SHORT).show()
+    }
+
     private fun showMenu() {
         val items = arrayOf("إضافة للمفضلة", "عرض المفضلة", "مسح سجل التصفح", "مسح الكاش", "مسح الكوكيز", "مسح بيانات المواقع", "حول HB Browser")
         AlertDialog.Builder(this).setTitle("HB Browser")
@@ -202,7 +208,7 @@ class MainActivity : Activity() {
                 when (which) {
                     0 -> saveBookmark()
                     1 -> showBookmarks()
-                    2 -> { tabs.forEach { it.clearHistory() }; Toast.makeText(this, "تم مسح السجل الحالي", Toast.LENGTH_SHORT).show() }
+                    2 -> clearAllHistory()
                     3 -> { tabs.forEach { it.clearCache(true) }; Toast.makeText(this, "تم مسح الكاش", Toast.LENGTH_SHORT).show() }
                     4 -> { CookieManager.getInstance().removeAllCookies { CookieManager.getInstance().flush(); Toast.makeText(this, "تم مسح الكوكيز", Toast.LENGTH_SHORT).show() } }
                     5 -> clearSiteData()
