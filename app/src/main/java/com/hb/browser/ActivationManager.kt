@@ -43,10 +43,7 @@ object ActivationManager {
         return try {
             val result = request("validate", JSONObject()
                 .put("token", token)
-                .put("device_id", deviceId(context))
-                .put("device_model", android.os.Build.MODEL ?: "Unknown")
-                .put("device_manufacturer", android.os.Build.MANUFACTURER ?: "Unknown")
-                .put("android_version", android.os.Build.VERSION.RELEASE ?: "Unknown"))
+                .put("device_id", deviceId(context)))
             if (result.optBoolean("ok")) {
                 prefs.edit().putLong(LAST_OK, System.currentTimeMillis()).apply(); State.ACTIVE
             } else {
@@ -60,10 +57,7 @@ object ActivationManager {
     fun activate(context: Context, code: String): String {
         val result = request("activate", JSONObject()
             .put("code", code.trim().uppercase())
-            .put("device_id", deviceId(context))
-            .put("device_model", android.os.Build.MODEL ?: "Unknown")
-            .put("device_manufacturer", android.os.Build.MANUFACTURER ?: "Unknown")
-            .put("android_version", android.os.Build.VERSION.RELEASE ?: "Unknown"))
+            .put("device_id", deviceId(context)))
         if (!result.optBoolean("ok")) throw IllegalArgumentException(result.optString("message", "الكود غير صالح"))
         val token = result.optString("token")
         if (token.isBlank()) throw IllegalStateException("لم يصل رمز التفعيل من الخادم")
