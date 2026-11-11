@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -15,22 +17,23 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import android.content.Intent
 import android.net.Uri
 
 class MainActivity : Activity() {
     private val gold = Color.rgb(212, 175, 55)
-    private val black = Color.rgb(9, 9, 9)
-    private val panel = Color.rgb(24, 24, 24)
+    private val black = Color.rgb(9, 10, 12)
+    private val panel = Color.rgb(23, 25, 29)
+    private val muted = Color.rgb(155, 160, 168)
     private lateinit var root: LinearLayout
     private lateinit var address: EditText
     private lateinit var webContainer: LinearLayout
     private lateinit var tabLabel: TextView
+    private lateinit var progress: ProgressBar
     private val tabs = mutableListOf<WebView>()
     private var activeTab = 0
     private val prefs by lazy { getSharedPreferences("hb_browser", Context.MODE_PRIVATE) }
@@ -39,17 +42,29 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = black
         window.navigationBarColor = black
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = 0
         buildInterface()
         addTab("https://www.google.com")
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun rounded(color: Int, strokeColor: Int? = null, radius: Int = 14): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radius).toFloat()
+            if (strokeColor != null) setStroke(dp(1), strokeColor)
+        }
     }
 
     private fun buildInterface() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(black)
-            setPadding(8, 8, 8, 4)
+            setPadding(dp(8), dp(7), dp(8), dp(3))
         }
-        val top = LinearLayout(this).apply {
+        val addressRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
@@ -57,64 +72,79 @@ class MainActivity : Activity() {
             setSingleLine(true)
             textSize = 14f
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY)
+            setHintTextColor(muted)
             hint = "ابحث أو أدخل عنوان موقع"
-            setHintTextColor(0xFFAAAAAA.toInt())
             setSelectAllOnFocus(true)
-            setPadding(14, 0, 14, 0)
-            setBackgroundColor(panel)
+            setPadding(dp(14), 0, dp(12), 0)
+            background = rounded(panel, Color.rgb(75, 65, 39), 18)
             imeOptions = EditorInfo.IME_ACTION_GO
-            layoutParams = LinearLayout.LayoutParams(0, 46, 1f).apply { marginEnd = 6 }
+            textDirection = View.TEXT_DIRECTION_LTR
+            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(7) }
             setOnEditorActionListener { _, action, event ->
                 if (action == EditorInfo.IME_ACTION_GO || event?.keyCode == KeyEvent.KEYCODE_ENTER) {
-                    loadAddress(text.toString()); true
+                    loadAddress(text.toString())
+                    true
                 } else false
             }
         }
-        top.addView(address)
-        top.addView(makeButton("＋") { addTab("https://www.google.com") })
-        top.addView(makeButton("⋮") { showMenu() })
-        root.addView(top)
+        addressRow.addView(address)
+        addressRow.addView(makeAction("＋", 42) { addTab("https://www.google.com") })
+        addressRow.addView(makeAction("⋮", 42) { showMenu() }.apply {
+            layoutParams = (layoutParams as LinearLayout.LayoutParams).apply { marginStart = dp(5) }
+        })
+        root.addView(addressRow)
 
         val nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(2), dp(6), dp(2), dp(6))
         }
-        nav.addView(makeButton("‹") { if (currentWeb()?.canGoBack() == true) currentWeb()?.goBack() })
-        nav.addView(makeButton("›") { if (currentWeb()?.canGoForward() == true) currentWeb()?.goForward() })
-        nav.addView(makeButton("↻") { currentWeb()?.reload() })
-        nav.addView(makeButton("⌫") { clearAllHistory() })
+        nav.addView(makeAction("‹", 38, 20) { if (currentWeb()?.canGoBack() == true) currentWeb()?.goBack() })
+        nav.addView(makeAction("›", 38, 20) { if (currentWeb()?.canGoForward() == true) currentWeb()?.goForward() })
+        nav.addView(makeAction("↻", 38, 18) { currentWeb()?.reload() })
+        nav.addView(makeAction("⌫", 38, 16) { clearAllHistory() })
         tabLabel = TextView(this).apply {
             setTextColor(gold)
-            textSize = 13f
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            text = "تبويبات: 1"
-            setPadding(8, 8, 8, 8)
+            text = "1 تبويب"
+            setPadding(dp(6), 0, dp(6), 0)
+            layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f)
         }
-        nav.addView(tabLabel, LinearLayout.LayoutParams(0, 42, 1f))
-        nav.addView(makeButton("□") { showTabs() })
+        nav.addView(tabLabel)
+        nav.addView(makeAction("▢", 38, 17) { showTabs() })
         root.addView(nav)
+
+        progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            progressTintList = android.content.res.ColorStateList.valueOf(gold)
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(panel)
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(-1, dp(2))
+        }
+        root.addView(progress)
 
         webContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.WHITE)
         }
-        root.addView(webContainer, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-        ))
+        root.addView(webContainer, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
     }
 
-    private fun makeButton(label: String, action: () -> Unit): Button {
-        return Button(this).apply {
+    private fun makeAction(label: String, width: Int, textSize: Int = 19, action: () -> Unit): TextView {
+        return TextView(this).apply {
             text = label
-            textSize = 17f
+            this.textSize = textSize.toFloat()
             setTextColor(gold)
-            setBackgroundColor(panel)
-            minWidth = 42
-            minimumWidth = 42
-            minHeight = 42
-            setPadding(4, 0, 4, 0)
+            gravity = Gravity.CENTER
+            typeface = Typeface.DEFAULT
+            background = rounded(panel, Color.rgb(48, 45, 36), 13)
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dp(width), dp(38)).apply { marginEnd = dp(4) }
             setOnClickListener { action() }
         }
     }
@@ -135,12 +165,19 @@ class MainActivity : Activity() {
             settings.allowContentAccess = false
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-            webChromeClient = WebChromeClient()
+            webChromeClient = object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                    if (view === currentWeb()) {
+                        progress.progress = newProgress
+                        progress.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
+                    }
+                }
+            }
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     if (view === currentWeb()) {
                         address.setText(url ?: "")
-                        tabLabel.text = "تبويبات: ${tabs.size}"
+                        tabLabel.text = "\${tabs.size} تبويب"
                     }
                 }
             }
@@ -155,7 +192,7 @@ class MainActivity : Activity() {
         activeTab = tabs.lastIndex
         webContainer.removeAllViews()
         webContainer.addView(web, LinearLayout.LayoutParams(-1, -1))
-        tabLabel.text = "تبويبات: ${tabs.size}"
+        tabLabel.text = "\${tabs.size} تبويب"
         loadInto(web, url)
     }
 
@@ -165,7 +202,7 @@ class MainActivity : Activity() {
         webContainer.removeAllViews()
         webContainer.addView(tabs[index], LinearLayout.LayoutParams(-1, -1))
         address.setText(tabs[index].url ?: "")
-        tabLabel.text = "تبويبات: ${tabs.size}"
+        tabLabel.text = "\${tabs.size} تبويب"
     }
 
     private fun loadAddress(raw: String) {
@@ -187,7 +224,7 @@ class MainActivity : Activity() {
 
     private fun showTabs() {
         if (tabs.isEmpty()) return
-        val labels = tabs.mapIndexed { i, w -> "${i + 1}. ${w.title ?: w.url ?: "تبويب جديد"}" }.toMutableList()
+        val labels = tabs.mapIndexed { i, w -> "\${i + 1}. \${w.title ?: w.url ?: "تبويب جديد"}" }.toMutableList()
         labels.add("＋ تبويب جديد")
         AlertDialog.Builder(this).setTitle("التبويبات")
             .setItems(labels.toTypedArray()) { _, which ->
@@ -198,7 +235,7 @@ class MainActivity : Activity() {
 
     private fun clearAllHistory() {
         tabs.forEach { it.clearHistory() }
-        Toast.makeText(this, "تم مسح سجل التصفح من جميع التبويبات", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "تم مسح سجل الرجوع والتقدم في جميع التبويبات", Toast.LENGTH_SHORT).show()
     }
 
     private fun showMenu() {
