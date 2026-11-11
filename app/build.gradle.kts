@@ -13,6 +13,7 @@ android {
         targetSdk = 35
         versionCode = 3
         versionName = "1.2-license-preview"
+        buildConfigField("String", "HB_LICENSE_API", "\"https://YOUR-DOMAIN/hb-license/api.php\"")
         ndk {
             abiFilters += setOf("arm64-v8a")
         }
@@ -20,9 +21,6 @@ android {
 
     buildFeatures { buildConfig = true }
 
-    defaultConfig {
-        buildConfigField("String", "HB_LICENSE_API", "\"https://YOUR-DOMAIN/hb-license/api.php\"")
-    }
 
     buildTypes {
         release {
