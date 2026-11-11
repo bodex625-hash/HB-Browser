@@ -11,11 +11,17 @@ android {
         applicationId = "com.hb.browser"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1-chromium-prototype"
+        versionCode = 3
+        versionName = "1.2-license-preview"
         ndk {
             abiFilters += setOf("arm64-v8a")
         }
+    }
+
+    buildFeatures { buildConfig = true }
+
+    defaultConfig {
+        buildConfigField("String", "HB_LICENSE_API", "\"https://YOUR-DOMAIN/hb-license/api.php\"")
     }
 
     buildTypes {
