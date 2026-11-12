@@ -149,9 +149,9 @@ internal class Socks5ProxyBridge(
         }
     }
 
-    private fun DataInputStream.availableDomainLength(): Int {
-        val length = readUnsignedByte()
-        return length
+    private fun readDomainAddress(input: DataInputStream): ByteArray {
+        val length = input.readUnsignedByte()
+        return byteArrayOf(length.toByte()) + readFully(input, length)
     }
 
     private fun pump(from: Socket, to: Socket) {
