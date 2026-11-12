@@ -19,6 +19,7 @@ class HBSocks5VpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     private var configFile: File? = null
     private var nativeLoaded = false
+    @Volatile private var tunnelVerified = false
     @Volatile private var probeThread: Thread? = null
 
     private external fun TProxyStartService(configPath: String, fd: Int): Boolean
@@ -59,8 +60,13 @@ class HBSocks5VpnService : VpnService() {
         }
 
         if (tun == null) {
+            tunnelVerified = false
             broadcastState("CONNECTING", "جارٍ تجهيز نفق SOCKS5...")
             startTunnel()
+        } else if (tunnelVerified) {
+            broadcastState("CONNECTED", "اتصال SOCKS5 يعمل وتم التحقق من مرور الإنترنت عبر VPN")
+        } else {
+            broadcastState("CONNECTING", "نفق VPN قيد الاختبار...")
         }
         return START_STICKY
     }
@@ -238,6 +244,7 @@ class HBSocks5VpnService : VpnService() {
             }
             if (Thread.currentThread().isInterrupted) return@Thread
             if (success) {
+                tunnelVerified = true
                 val message = "اتصال SOCKS5 يعمل وتم التحقق من مرور الإنترنت عبر VPN"
                 try {
                     val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
@@ -261,6 +268,7 @@ class HBSocks5VpnService : VpnService() {
         value.replace("'", "''").replace("\n", "").replace("\r", "")
 
     private fun stopTunnel() {
+        tunnelVerified = false
         probeThread?.let { if (it !== Thread.currentThread()) it.interrupt() }
         probeThread = null
         if (nativeLoaded) {
