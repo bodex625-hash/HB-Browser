@@ -17,6 +17,11 @@ android {
         ndk {
             abiFilters += setOf("arm64-v8a")
         }
+        externalNativeBuild {
+            ndkBuild {
+                arguments += listOf("NDK_APPLICATION_MK:=src/main/jni/Application.mk")
+            }
+        }
     }
 
     externalNativeBuild {
