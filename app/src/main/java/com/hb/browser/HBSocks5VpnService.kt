@@ -137,7 +137,8 @@ class HBSocks5VpnService : VpnService() {
     private fun yaml(value: String): String = value.replace("'", "''").replace("\n", "").replace("\r", "")
 
     private fun stopTunnel() {
-        try { if (TProxyIsRunning()) TProxyStopService() } catch (_: Exception) {}
+        // Always join the native worker, even if it exited early, so JNI references are released.
+        try { TProxyStopService() } catch (_: Exception) {}
         try { tun?.close() } catch (_: Exception) {}
         tun = null
         configFile?.delete()
