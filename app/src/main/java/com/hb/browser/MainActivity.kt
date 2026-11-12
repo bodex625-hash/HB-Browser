@@ -260,7 +260,6 @@ class MainActivity : Activity() {
         browser.setOnLoadingStateChangedListener { isLoading, _, _ ->
             runOnUiThread {
                 if (!isLoading && !isFinishing) {
-                    // Re-apply the fixed zoom after every navigation, including survey pages.
                     browser.setZoomLevel(zoomPercentToLevel(fixedZoomPercent))
                 }
                 if (activeTab?.id == tab.id && !isFinishing) {
@@ -292,7 +291,6 @@ class MainActivity : Activity() {
             }
 
             override fun onOpenPopup(targetUrl: String, userGesture: Boolean): Boolean {
-                // Keep unhandled popup navigation inside this browser, never launch Chrome.
                 return false
             }
         })
@@ -432,12 +430,10 @@ class MainActivity : Activity() {
 
 
     private fun restoreSavedProxy() {
+        // Do not reconnect the device-wide VPN before the license check runs.
+        // Saved SOCKS5 credentials remain available in the proxy dialog.
         profile.clearProxy()
         profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DEFAULT)
-        val saved = ProxyCredentialStore.load(this) ?: return
-        if (saved.size >= 4 && HBProxyVpnController.permissionIntent(this) == null) {
-            HBProxyVpnController.start(this)
-        }
     }
 
     private fun showProxyDialog() {
