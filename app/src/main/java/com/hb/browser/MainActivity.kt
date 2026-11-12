@@ -42,7 +42,9 @@ class MainActivity : Activity() {
     private var activeTab: BrowserTab? = null
     private var nextTabId = 1
     private val prefs by lazy { getSharedPreferences("hb_browser", Context.MODE_PRIVATE) }
-    private val licenseExecutor = Executors.newSingleThreadExecutor()\n    private val proxyExecutor = Executors.newSingleThreadExecutor()\n    private var proxyBridge: Socks5ProxyBridge? = null
+    private val licenseExecutor = Executors.newSingleThreadExecutor()
+    private val proxyExecutor = Executors.newSingleThreadExecutor()
+    private var proxyBridge: Socks5ProxyBridge? = null
     private val licenseHandler = Handler(Looper.getMainLooper())
     private val licenseCheck = object : Runnable {
         override fun run() {
@@ -410,6 +412,7 @@ class MainActivity : Activity() {
             "إضافة للمفضلة",
             "عرض المفضلة",
             "مسح جميع بيانات التصفح",
+            "إعداد بروكسي SOCKS5",
             "حول HB Browser"
         )
         AlertDialog.Builder(this)
@@ -419,7 +422,8 @@ class MainActivity : Activity() {
                     0 -> saveBookmark()
                     1 -> showBookmarks()
                     2 -> confirmClearAllData()
-                    3 -> showProxyDialog()\n                    4 -> showAboutDialog()
+                    3 -> showProxyDialog()
+                    4 -> showAboutDialog()
                 }
             }
             .show()
@@ -623,8 +627,10 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("حول HB Browser")
             .setMessage(
-                "HB Browser\n" +
-                    "برمجة BODEX و HADI\n" +
+                "HB Browser
+" +
+                    "برمجة BODEX و HADI
+" +
                     "قيد التطوير"
             )
             .setPositiveButton("حسناً", null)
