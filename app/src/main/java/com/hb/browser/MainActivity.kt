@@ -3,6 +3,9 @@ package com.hb.browser
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -45,6 +48,29 @@ class MainActivity : Activity() {
     private val licenseExecutor = Executors.newSingleThreadExecutor()
     private val proxyExecutor = Executors.newSingleThreadExecutor()
     private val proxyPermissionRequest = 901
+    private var proxyConnectionPending = false
+    private var proxyOverlay: TextView? = null
+    private val proxyStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != HBSocks5VpnService.ACTION_STATE) return
+            val state = intent.getStringExtra(HBSocks5VpnService.EXTRA_STATE) ?: return
+            val message = intent.getStringExtra(HBSocks5VpnService.EXTRA_MESSAGE).orEmpty()
+            when (state) {
+                "CONNECTING" -> showProxyConnectingOverlay(message)
+                "CONNECTED" -> {
+                    proxyConnectionPending = false
+                    removeProxyOverlay()
+                    if (tabs.isEmpty()) createNewTab() else activeTab?.browser?.reload()
+                    Toast.makeText(this@MainActivity, "تم الاتصال بالبروكسي والتحقق من الإنترنت عبر VPN", Toast.LENGTH_LONG).show()
+                }
+                "FAILED" -> {
+                    proxyConnectionPending = false
+                    showProxyFailureOverlay(message)
+                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
     private val licenseHandler = Handler(Looper.getMainLooper())
     private val licenseCheck = object : Runnable {
         override fun run() {
@@ -84,7 +110,65 @@ class MainActivity : Activity() {
         restoreSavedProxy()
 
         buildInterface()
-        createNewTab()
+        val filter = IntentFilter(HBSocks5VpnService.ACTION_STATE)
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(proxyStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(proxyStateReceiver, filter)
+        }
+
+        val savedProxy = ProxyCredentialStore.load(this)
+        if (savedProxy != null && savedProxy.size >= 4 &&
+            savedProxy[0].isNotBlank() && savedProxy[1].toIntOrNull() in 1..65535
+        ) {
+            proxyConnectionPending = true
+            showProxyConnectingOverlay("جارٍ تشغيل البروكسي المحفوظ قبل فتح المتصفح...")
+            requestProxyStart()
+        } else {
+            createNewTab()
+        }
+    }
+
+    private fun showProxyConnectingOverlay(message: String = "جارٍ الاتصال بالبروكسي...") {
+        if (!::webContainer.isInitialized) return
+        val overlay = proxyOverlay ?: TextView(this).apply {
+            gravity = Gravity.CENTER
+            textAlignment = View.TEXT_ALIGNMENT_CENTER
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setPadding(dp(28), dp(24), dp(28), dp(24))
+            setBackgroundColor(black)
+            isClickable = true
+            isFocusable = true
+            proxyOverlay = this
+            webContainer.addView(this, FrameLayout.LayoutParams(-1, -1))
+        }
+        overlay.text = "$message\n\nلن يتم فتح صفحات المتصفح قبل نجاح اختبار الاتصال."
+        overlay.visibility = View.VISIBLE
+    }
+
+    private fun showProxyFailureOverlay(message: String) {
+        showProxyConnectingOverlay("فشل اتصال البروكسي:\n$message\n\nافتح القائمة ثم إعداد بروكسي SOCKS5 لتصحيح البيانات أو إعادة المحاولة.")
+    }
+
+    private fun removeProxyOverlay() {
+        proxyOverlay?.let { webContainer.removeView(it) }
+        proxyOverlay = null
+    }
+
+    private fun requestProxyStart() {
+        try {
+            val permission = HBProxyVpnController.permissionIntent(this)
+            if (permission != null) {
+                startActivityForResult(permission, proxyPermissionRequest)
+            } else {
+                HBProxyVpnController.start(this)
+            }
+        } catch (t: Throwable) {
+            proxyConnectionPending = false
+            showProxyFailureOverlay(t.message ?: "تعذر بدء خدمة VPN")
+        }
     }
 
     private fun dp(value: Int): Int =
@@ -500,7 +584,7 @@ class MainActivity : Activity() {
                     return@setOnClickListener
                 }
                 val ok = activateProxy(h, p, u, pw, true)
-                status.text = if (ok) "تم حفظ البروكسي وتشغيله" else "تعذر تشغيل البروكسي"
+                status.text = if (ok) "تم حفظ البروكسي؛ جارٍ إنشاء النفق واختبار الاتصال..." else "تعذر طلب تشغيل البروكسي"
                 status.setTextColor(if (ok) gold else Color.RED)
                 if (ok) dialog.dismiss()
             }
@@ -541,12 +625,9 @@ class MainActivity : Activity() {
             profile.clearProxy()
             profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DEFAULT)
             if (save) ProxyCredentialStore.save(this, host, port, user, pass)
-            val permission = HBProxyVpnController.permissionIntent(this)
-            if (permission != null) {
-                startActivityForResult(permission, proxyPermissionRequest)
-            } else {
-                HBProxyVpnController.start(this)
-            }
+            proxyConnectionPending = true
+            showProxyConnectingOverlay("تم حفظ البيانات؛ جارٍ تشغيل VPN واختبار SOCKS5...")
+            requestProxyStart()
             true
         } catch (_: Exception) {
             false
@@ -558,6 +639,10 @@ class MainActivity : Activity() {
         profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DEFAULT)
         HBProxyVpnController.stop(this)
         ProxyCredentialStore.clear(this)
+        proxyConnectionPending = false
+        removeProxyOverlay()
+        if (tabs.isEmpty()) createNewTab()
+        tabs.forEach { it.browser.onResume() }
         Toast.makeText(this, "تم إيقاف البروكسي", Toast.LENGTH_SHORT).show()
     }
 
@@ -666,8 +751,12 @@ class MainActivity : Activity() {
         if (requestCode == proxyPermissionRequest) {
             if (resultCode == RESULT_OK) {
                 HBProxyVpnController.start(this)
-                Toast.makeText(this, "تم السماح بتشغيل نفق البروكسي", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "تم منح إذن VPN؛ جارٍ اختبار الاتصال قبل فتح الصفحات", Toast.LENGTH_SHORT).show()
             } else {
+                proxyConnectionPending = false
+                removeProxyOverlay()
+                if (tabs.isEmpty()) createNewTab()
+                tabs.forEach { it.browser.onResume() }
                 Toast.makeText(this, "لم يتم منح إذن VPN؛ لم يبدأ النفق", Toast.LENGTH_LONG).show()
             }
         }
@@ -689,6 +778,7 @@ class MainActivity : Activity() {
         licenseHandler.removeCallbacks(licenseCheck)
         licenseExecutor.shutdownNow()
         proxyExecutor.shutdownNow()
+        try { unregisterReceiver(proxyStateReceiver) } catch (_: Exception) {}
         super.onDestroy()
     }
 }
