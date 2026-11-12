@@ -50,13 +50,13 @@ jobs:
 
           s = jni.read_text()
           s, n = re.subn(
-              r"static pthread_key_t current_jni_env;\\n",
-              "static pthread_key_t current_jni_env;\\nstatic jobject vpn_service_ref;\\nstatic jmethodID vpn_protect_method;\\n",
+              r"static pthread_key_t current_jni_env;\n",
+              "static pthread_key_t current_jni_env;\nstatic jobject vpn_service_ref;\nstatic jmethodID vpn_protect_method;\n",
               s, count=1)
           if n != 1:
               raise SystemExit("JNI globals insertion point not found")
 
-          callback = textwrap.dedent("""\\
+          callback = textwrap.dedent("""\
           int
           hb_vpn_protect_socket (int fd)
           {
@@ -92,12 +92,12 @@ jobs:
               return protected_socket == JNI_TRUE ? 0 : -1;
           }
           """)
-          marker = "static void\\ndetach_current_thread"
+          marker = "static void\ndetach_current_thread"
           if marker not in s:
               raise SystemExit("JNI callback insertion point not found")
-          s = s.replace(marker, callback + "\\n" + marker, 1)
+          s = s.replace(marker, callback + "\n" + marker, 1)
 
-          start_func = textwrap.dedent("""\\
+          start_func = textwrap.dedent("""\
           static jboolean
           native_start_service (JNIEnv *env, jobject thiz, jstring config_path, jint fd)
           {
@@ -180,13 +180,13 @@ jobs:
               return result;
           }
           """)
-          pattern = r"static jboolean\\nnative_start_service.*?\\n}\\n\\nstatic jboolean\\nnative_stop_service"
-          replacement = start_func + "\\n\\nstatic jboolean\\nnative_stop_service"
+          pattern = r"static jboolean\nnative_start_service.*?\n}\n\nstatic jboolean\nnative_stop_service"
+          replacement = start_func + "\n\nstatic jboolean\nnative_stop_service"
           s, n = re.subn(pattern, lambda _: replacement, s, count=1, flags=re.S)
           if n != 1:
               raise SystemExit("JNI start/stop function boundary not found")
 
-          stop_func = textwrap.dedent("""\\
+          stop_func = textwrap.dedent("""\
           static jboolean
           native_stop_service (JNIEnv *env, jobject thiz)
           {
@@ -213,16 +213,16 @@ jobs:
               return res == 0 ? JNI_TRUE : JNI_FALSE;
           }
           """)
-          pattern = r"static jboolean\\nnative_stop_service.*?\\n}\\n\\nstatic jboolean\\nnative_is_running"
-          replacement = stop_func + "\\n\\nstatic jboolean\\nnative_is_running"
+          pattern = r"static jboolean\nnative_stop_service.*?\n}\n\nstatic jboolean\nnative_is_running"
+          replacement = stop_func + "\n\nstatic jboolean\nnative_is_running"
           s, n = re.subn(pattern, lambda _: replacement, s, count=1, flags=re.S)
           if n != 1:
               raise SystemExit("JNI stop/is_running function boundary not found")
           jni.write_text(s)
 
           s = core.read_text()
-          pattern = r"(    fd = hev_task_io_socket_socket \\(AF_INET6, type, 0\\);\\n    if \\(fd < 0\\)\\n        return -1;\\n)"
-          inject = textwrap.dedent("""\\
+          pattern = r"(    fd = hev_task_io_socket_socket \(AF_INET6, type, 0\);\n    if \(fd < 0\)\n        return -1;\n)"
+          inject = textwrap.dedent("""\
               #ifdef ANDROID
               extern int hb_vpn_protect_socket (int fd);
               if (hb_vpn_protect_socket (fd) < 0) {
