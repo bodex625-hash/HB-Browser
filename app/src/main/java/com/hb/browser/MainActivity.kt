@@ -44,7 +44,7 @@ class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("hb_browser", Context.MODE_PRIVATE) }
     private val licenseExecutor = Executors.newSingleThreadExecutor()
     private val proxyExecutor = Executors.newSingleThreadExecutor()
-    private var proxyBridge: Socks5ProxyBridge? = null
+    private val proxyPermissionRequest = 901
     private val licenseHandler = Handler(Looper.getMainLooper())
     private val licenseCheck = object : Runnable {
         override fun run() {
@@ -432,28 +432,11 @@ class MainActivity : Activity() {
 
 
     private fun restoreSavedProxy() {
-        val saved = ProxyCredentialStore.load(this)
-        if (saved == null) {
-            profile.clearProxy()
-            return
-        }
-        val host = saved[0]
-        val port = saved[1].toIntOrNull() ?: return
-        val user = saved[2]
-        val pass = saved[3]
-        try {
-            val bridge = Socks5ProxyBridge(host, port, user, pass)
-            bridge.start()
-            if (profile.setProxy("socks5://127.0.0.1:${bridge.localPort}")) {
-                profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DISABLE_NON_PROXIED_UDP)
-                proxyBridge?.stop()
-                proxyBridge = bridge
-            } else {
-                bridge.stop()
-                profile.clearProxy()
-            }
-        } catch (_: Exception) {
-            profile.clearProxy()
+        profile.clearProxy()
+        profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DEFAULT)
+        val saved = ProxyCredentialStore.load(this) ?: return
+        if (saved.size >= 4 && HBProxyVpnController.permissionIntent(this) == null) {
+            HBProxyVpnController.start(this)
         }
     }
 
@@ -559,16 +542,15 @@ class MainActivity : Activity() {
 
     private fun activateProxy(host: String, port: Int, user: String, pass: String, save: Boolean): Boolean {
         return try {
-            val bridge = Socks5ProxyBridge(host, port, user, pass)
-            bridge.start()
-            if (!profile.setProxy("socks5://127.0.0.1:${bridge.localPort}")) {
-                bridge.stop()
-                return false
-            }
-            profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DISABLE_NON_PROXIED_UDP)
-            proxyBridge?.stop()
-            proxyBridge = bridge
+            profile.clearProxy()
+            profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DEFAULT)
             if (save) ProxyCredentialStore.save(this, host, port, user, pass)
+            val permission = HBProxyVpnController.permissionIntent(this)
+            if (permission != null) {
+                startActivityForResult(permission, proxyPermissionRequest)
+            } else {
+                HBProxyVpnController.start(this)
+            }
             true
         } catch (_: Exception) {
             false
@@ -578,8 +560,7 @@ class MainActivity : Activity() {
     private fun disableProxy() {
         profile.clearProxy()
         profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DEFAULT)
-        proxyBridge?.stop()
-        proxyBridge = null
+        HBProxyVpnController.stop(this)
         ProxyCredentialStore.clear(this)
         Toast.makeText(this, "تم إيقاف البروكسي", Toast.LENGTH_SHORT).show()
     }
@@ -683,6 +664,19 @@ class MainActivity : Activity() {
         }
     }
 
+    @Deprecated("Deprecated in Android")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == proxyPermissionRequest) {
+            if (resultCode == RESULT_OK) {
+                HBProxyVpnController.start(this)
+                Toast.makeText(this, "تم السماح بتشغيل نفق البروكسي", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "لم يتم منح إذن VPN؛ لم يبدأ النفق", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         val current = activeTab?.browser
@@ -699,8 +693,6 @@ class MainActivity : Activity() {
         licenseHandler.removeCallbacks(licenseCheck)
         licenseExecutor.shutdownNow()
         proxyExecutor.shutdownNow()
-        proxyBridge?.stop()
-        proxyBridge = null
         super.onDestroy()
     }
 }
