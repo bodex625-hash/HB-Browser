@@ -37,6 +37,216 @@ jobs:
         run: |
           git clone --depth 1 --recursive https://github.com/heiher/hev-socks5-tunnel.git app/src/main/jni/hev-socks5-tunnel
 
+      - name: Patch native tunnel to protect only upstream SOCKS sockets
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path("app/src/main/jni/hev-socks5-tunnel")
+          jni = root / "src/hev-jni.c"
+          core = root / "src/core/src/hev-socks5-misc.c"
+
+          s = jni.read_text()
+          old = "static pthread_key_t current_jni_env;\n"
+          new = """static pthread_key_t current_jni_env;
+          static jobject vpn_service_ref;
+          static jmethodID vpn_protect_method;
+
+          /*
+           * Called by the SOCKS5 core immediately after creating each upstream
+           * socket. Android requires VpnService.protect() on that socket so
+           * the proxy transport itself does not re-enter the TUN interface.
+           */
+          int
+          hb_vpn_protect_socket (int fd)
+          {
+              JNIEnv *env = NULL;
+              jint status;
+              int attached = 0;
+              jboolean protected_socket;
+
+              if (!vpn_service_ref || !vpn_protect_method)
+                  return -1;
+
+              status = (*java_vm)->GetEnv (java_vm, (void **)&env,
+                                           JNI_VERSION_1_4);
+              if (status == JNI_EDETACHED) {
+                  if ((*java_vm)->AttachCurrentThread (java_vm,
+                                                       (void **)&env, NULL) != JNI_OK)
+                      return -1;
+                  attached = 1;
+              } else if (status != JNI_OK) {
+                  return -1;
+              }
+
+              protected_socket = (*env)->CallBooleanMethod (
+                  env, vpn_service_ref, vpn_protect_method, (jint)fd);
+              if ((*env)->ExceptionCheck (env)) {
+                  (*env)->ExceptionClear (env);
+                  protected_socket = JNI_FALSE;
+              }
+
+              if (attached)
+                  (*java_vm)->DetachCurrentThread (java_vm);
+
+              return protected_socket == JNI_TRUE ? 0 : -1;
+          }
+          """
+          if old not in s:
+              raise SystemExit("JNI static insertion point not found")
+          s = s.replace(old, new, 1)
+
+          old = """    if (thread_joinable) {
+              pthread_join (work_thread, NULL);
+              thread_joinable = 0;
+          }
+
+          tdata = malloc (sizeof (ThreadData));
+          if (!tdata)
+              goto exit;
+          tdata->fd = fd;
+          """
+          new = """    if (thread_joinable) {
+              pthread_join (work_thread, NULL);
+              thread_joinable = 0;
+          }
+          if (vpn_service_ref) {
+              (*env)->DeleteGlobalRef (env, vpn_service_ref);
+              vpn_service_ref = NULL;
+              vpn_protect_method = NULL;
+          }
+
+          vpn_service_ref = (*env)->NewGlobalRef (env, thiz);
+          if (!vpn_service_ref)
+              goto exit;
+          {
+              jclass service_class = (*env)->GetObjectClass (env, thiz);
+              if (!service_class)
+                  goto clear_service_ref;
+              vpn_protect_method = (*env)->GetMethodID (
+                  env, service_class, "protectSocketFromNative", "(I)Z");
+              (*env)->DeleteLocalRef (env, service_class);
+              if (!vpn_protect_method) {
+                  if ((*env)->ExceptionCheck (env))
+                      (*env)->ExceptionClear (env);
+                  goto clear_service_ref;
+              }
+          }
+
+          tdata = malloc (sizeof (ThreadData));
+          if (!tdata)
+              goto clear_service_ref;
+          tdata->fd = fd;
+          """
+          if old not in s:
+              raise SystemExit("JNI start insertion point not found")
+          s = s.replace(old, new, 1)
+
+          old = """    if (!bytes) {
+              free (tdata);
+              goto exit;
+          }
+          """
+          new = """    if (!bytes) {
+              free (tdata);
+              goto clear_service_ref;
+          }
+          """
+          if old not in s:
+              raise SystemExit("JNI string failure branch not found")
+          s = s.replace(old, new, 1)
+
+          old = """    if (!tdata->path) {
+              free (tdata);
+              goto exit;
+          }
+          """
+          new = """    if (!tdata->path) {
+              free (tdata);
+              goto clear_service_ref;
+          }
+          """
+          if old not in s:
+              raise SystemExit("JNI strdup failure branch not found")
+          s = s.replace(old, new, 1)
+
+          old = """        free (tdata->path);
+              free (tdata);
+              goto exit;
+          }
+
+          thread_joinable = 1;
+          result = JNI_TRUE;
+      exit:
+          pthread_mutex_unlock (&mutex);
+          return result;
+          """
+          new = """        free (tdata->path);
+              free (tdata);
+              goto clear_service_ref;
+          }
+
+          thread_joinable = 1;
+          result = JNI_TRUE;
+          goto exit;
+      clear_service_ref:
+          if (vpn_service_ref) {
+              (*env)->DeleteGlobalRef (env, vpn_service_ref);
+              vpn_service_ref = NULL;
+              vpn_protect_method = NULL;
+          }
+      exit:
+          pthread_mutex_unlock (&mutex);
+          return result;
+          """
+          if old not in s:
+              raise SystemExit("JNI create-thread cleanup point not found")
+          s = s.replace(old, new, 1)
+
+          old = """    thread_joinable = 0;
+              atomic_store_explicit (&is_running, 0, memory_order_release);
+          exit:
+          pthread_mutex_unlock (&mutex);
+          """
+          new = """    thread_joinable = 0;
+              atomic_store_explicit (&is_running, 0, memory_order_release);
+              if (vpn_service_ref) {
+                  (*env)->DeleteGlobalRef (env, vpn_service_ref);
+                  vpn_service_ref = NULL;
+                  vpn_protect_method = NULL;
+              }
+          exit:
+          pthread_mutex_unlock (&mutex);
+          """
+          if old not in s:
+              raise SystemExit("JNI stop cleanup point not found")
+          s = s.replace(old, new, 1)
+          jni.write_text(s)
+
+          s = core.read_text()
+          old = """    fd = hev_task_io_socket_socket (AF_INET6, type, 0);
+              if (fd < 0)
+                  return -1;
+
+              res = hev_task_io_socket_setsockopt"""
+          new = """    fd = hev_task_io_socket_socket (AF_INET6, type, 0);
+              if (fd < 0)
+                  return -1;
+
+          #ifdef ANDROID
+              extern int hb_vpn_protect_socket (int fd);
+              if (hb_vpn_protect_socket (fd) < 0) {
+                  hev_task_io_close (fd);
+                  return -1;
+              }
+          #endif
+
+              res = hev_task_io_socket_setsockopt"""
+          if old not in s:
+              raise SystemExit("SOCKS socket protection insertion point not found")
+          core.write_text(s.replace(old, new, 1))
+          PY
+
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
 
