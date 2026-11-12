@@ -17,6 +17,12 @@ class HBSocks5VpnService : VpnService() {
     private var configFile: File? = null
 
     private external fun TProxyStartService(configPath: String, fd: Int): Boolean
+
+    // Called by the native SOCKS5 engine for each outbound proxy socket.
+    // Protecting only this socket avoids a VPN routing loop while keeping
+    // browser traffic inside the VPN interface.
+    @Suppress("unused")
+    fun protectSocketFromNative(fd: Int): Boolean = protect(fd)
     private external fun TProxyStopService(): Boolean
     private external fun TProxyIsRunning(): Boolean
 
