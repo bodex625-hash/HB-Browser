@@ -120,7 +120,7 @@ class MainActivity : Activity() {
 
         val savedProxy = ProxyCredentialStore.load(this)
         if (savedProxy != null && savedProxy.size >= 4 &&
-            savedProxy[0].isNotBlank() && savedProxy[1].toIntOrNull() in 1..65535
+            savedProxy[0].isNotBlank() && (savedProxy[1].toIntOrNull()?.let { it in 1..65535 } == true)
         ) {
             proxyConnectionPending = true
             showProxyConnectingOverlay("جارٍ تشغيل البروكسي المحفوظ قبل فتح المتصفح...")
