@@ -12,11 +12,14 @@ import android.content.pm.ServiceInfo
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 class HBSocks5VpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     private var configFile: File? = null
     private var nativeLoaded = false
+    @Volatile private var probeThread: Thread? = null
 
     private external fun TProxyStartService(configPath: String, fd: Int): Boolean
 
@@ -29,6 +32,9 @@ class HBSocks5VpnService : VpnService() {
     companion object {
         const val ACTION_CONNECT = "com.hb.browser.proxy.CONNECT"
         const val ACTION_DISCONNECT = "com.hb.browser.proxy.DISCONNECT"
+        const val ACTION_STATE = "com.hb.browser.proxy.STATE"
+        const val EXTRA_STATE = "state"
+        const val EXTRA_MESSAGE = "message"
         private const val CHANNEL_ID = "hb_proxy_vpn"
         private const val NOTIFICATION_ID = 7315
         private const val TAG = "HBSocks5VpnService"
@@ -52,7 +58,10 @@ class HBSocks5VpnService : VpnService() {
             return START_NOT_STICKY
         }
 
-        if (tun == null) startTunnel()
+        if (tun == null) {
+            broadcastState("CONNECTING", "جارٍ تجهيز نفق SOCKS5...")
+            startTunnel()
+        }
         return START_STICKY
     }
 
@@ -89,8 +98,16 @@ class HBSocks5VpnService : VpnService() {
         }
     }
 
+    private fun broadcastState(state: String, message: String) {
+        val event = Intent(ACTION_STATE).setPackage(packageName)
+            .putExtra(EXTRA_STATE, state)
+            .putExtra(EXTRA_MESSAGE, message)
+        sendBroadcast(event)
+    }
+
     private fun reportFailure(message: String, error: Throwable? = null) {
         if (error != null) Log.e(TAG, message, error) else Log.e(TAG, message)
+        broadcastState("FAILED", message)
         try {
             val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             manager.notify(NOTIFICATION_ID, buildNotification(message))
@@ -172,10 +189,12 @@ class HBSocks5VpnService : VpnService() {
             }
             try {
                 val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-                manager.notify(NOTIFICATION_ID, buildNotification("نفق VPN قيد التشغيل"))
+                manager.notify(NOTIFICATION_ID, buildNotification("تم إنشاء النفق؛ جارٍ اختبار الإنترنت عبر البروكسي"))
             } catch (t: Throwable) {
                 Log.e(TAG, "Unable to update running notification", t)
             }
+            broadcastState("CONNECTING", "تم إنشاء النفق؛ جارٍ اختبار اتصال SOCKS5 فعلياً...")
+            startConnectivityProbe()
         } catch (t: Throwable) {
             try { descriptor.close() } catch (_: Throwable) {}
             tun = null
@@ -185,10 +204,65 @@ class HBSocks5VpnService : VpnService() {
         }
     }
 
+    // A successful native worker start is not proof that the remote SOCKS5 server
+    // authenticated or can carry traffic. Probe an HTTPS request through this VPN.
+    private fun startConnectivityProbe() {
+        probeThread?.interrupt()
+        probeThread = Thread({
+            val endpoints = listOf(
+                "https://api.ipify.org",
+                "https://checkip.amazonaws.com",
+                "https://ipv4.icanhazip.com"
+            )
+            var success = false
+            for (endpoint in endpoints) {
+                if (Thread.currentThread().isInterrupted) return@Thread
+                var connection: HttpURLConnection? = null
+                try {
+                    connection = URL(endpoint).openConnection() as HttpURLConnection
+                    connection.connectTimeout = 7000
+                    connection.readTimeout = 7000
+                    connection.instanceFollowRedirects = true
+                    connection.requestMethod = "GET"
+                    val code = connection.responseCode
+                    if (code in 200..299) {
+                        connection.inputStream.use { input -> input.readBytes() }
+                        success = true
+                        break
+                    }
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Proxy connectivity probe failed for $endpoint", t)
+                } finally {
+                    connection?.disconnect()
+                }
+            }
+            if (Thread.currentThread().isInterrupted) return@Thread
+            if (success) {
+                val message = "اتصال SOCKS5 يعمل وتم التحقق من مرور الإنترنت عبر VPN"
+                try {
+                    val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                    manager.notify(NOTIFICATION_ID, buildNotification(message))
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Unable to update connected notification", t)
+                }
+                broadcastState("CONNECTED", message)
+            } else {
+                val message = "تعذر الوصول للإنترنت عبر SOCKS5؛ تحقق من الخادم والمنفذ وبيانات الدخول"
+                stopTunnel()
+                reportFailure(message)
+            }
+        }, "HB-SOCKS5-Connectivity-Probe").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
     private fun yaml(value: String): String =
         value.replace("'", "''").replace("\n", "").replace("\r", "")
 
     private fun stopTunnel() {
+        probeThread?.let { if (it !== Thread.currentThread()) it.interrupt() }
+        probeThread = null
         if (nativeLoaded) {
             try { TProxyStopService() } catch (t: Throwable) { Log.e(TAG, "Native tunnel stop failed", t) }
             nativeLoaded = false
