@@ -632,10 +632,8 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("حول HB Browser")
             .setMessage(
-                "HB Browser
-" +
-                    "برمجة BODEX و HADI
-" +
+                "HB Browser\\n" +
+                    "برمجة BODEX و HADI\\n" +
                     "قيد التطوير"
             )
             .setPositiveButton("حسناً", null)
