@@ -77,7 +77,7 @@ internal class Socks5ProxyBridge(
             }
             val address = when (requestHead[3].toInt() and 0xff) {
                 1 -> readFully(ci, 4)
-                3 -> byteArrayOf(ci.readUnsignedByte().toByte()) + readFully(ci, ci.availableDomainLength())
+                3 -> readDomainAddress(ci)
                 4 -> readFully(ci, 16)
                 else -> return
             }
@@ -124,7 +124,7 @@ internal class Socks5ProxyBridge(
             val replyHead = readFully(ui, 4)
             val replyAddress = when (replyHead[3].toInt() and 0xff) {
                 1 -> readFully(ui, 4)
-                3 -> byteArrayOf(ui.readUnsignedByte().toByte()) + readFully(ui, ui.availableDomainLength())
+                3 -> readDomainAddress(ui)
                 4 -> readFully(ui, 16)
                 else -> ByteArray(0)
             }
