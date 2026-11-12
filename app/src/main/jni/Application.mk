@@ -1,0 +1,6 @@
+APP_OPTIM := release
+APP_PLATFORM := android-29
+APP_ABI := arm64-v8a
+APP_CFLAGS := -O3 -DPKGNAME=com/hb/browser -DCLSNAME=HBSocks5VpnService -DAPP_SUPPORT_FLEXIBLE_PAGE_SIZES=true
+APP_CPPFLAGS := -O3 -std=c++11
+NDK_TOOLCHAIN_VERSION := clang
