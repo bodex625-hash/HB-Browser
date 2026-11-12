@@ -700,6 +700,9 @@ class MainActivity : Activity() {
         activeTab = null
         licenseHandler.removeCallbacks(licenseCheck)
         licenseExecutor.shutdownNow()
+        proxyExecutor.shutdownNow()
+        proxyBridge?.stop()
+        proxyBridge = null
         super.onDestroy()
     }
 }
