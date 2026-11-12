@@ -42,7 +42,7 @@ class MainActivity : Activity() {
     private var activeTab: BrowserTab? = null
     private var nextTabId = 1
     private val prefs by lazy { getSharedPreferences("hb_browser", Context.MODE_PRIVATE) }
-    private val licenseExecutor = Executors.newSingleThreadExecutor()
+    private val licenseExecutor = Executors.newSingleThreadExecutor()\n    private val proxyExecutor = Executors.newSingleThreadExecutor()\n    private var proxyBridge: Socks5ProxyBridge? = null
     private val licenseHandler = Handler(Looper.getMainLooper())
     private val licenseCheck = object : Runnable {
         override fun run() {
@@ -419,10 +419,160 @@ class MainActivity : Activity() {
                     0 -> saveBookmark()
                     1 -> showBookmarks()
                     2 -> confirmClearAllData()
-                    3 -> showAboutDialog()
+                    3 -> showProxyDialog()\n                    4 -> showAboutDialog()
                 }
             }
             .show()
+    }
+
+
+    private fun restoreSavedProxy() {
+        val saved = ProxyCredentialStore.load(this)
+        if (saved == null) {
+            profile.clearProxy()
+            return
+        }
+        val host = saved[0]
+        val port = saved[1].toIntOrNull() ?: return
+        val user = saved[2]
+        val pass = saved[3]
+        try {
+            val bridge = Socks5ProxyBridge(host, port, user, pass)
+            bridge.start()
+            if (profile.setProxy("socks5://127.0.0.1:${bridge.localPort}")) {
+                profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DISABLE_NON_PROXIED_UDP)
+                proxyBridge?.stop()
+                proxyBridge = bridge
+            } else {
+                bridge.stop()
+                profile.clearProxy()
+            }
+        } catch (_: Exception) {
+            profile.clearProxy()
+        }
+    }
+
+    private fun showProxyDialog() {
+        val current = ProxyCredentialStore.load(this)
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(4))
+        }
+        fun field(hintText: String, value: String = "", password: Boolean = false): EditText {
+            return EditText(this).apply {
+                hint = hintText
+                setSingleLine(true)
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                setHintTextColor(muted)
+                setPadding(dp(12), dp(7), dp(12), dp(7))
+                background = rounded(panel, Color.rgb(75, 65, 39), 12)
+                if (value.isNotEmpty()) setText(value)
+                if (password) inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                    android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                layoutParams = LinearLayout.LayoutParams(-1, dp(48)).apply {
+                    bottomMargin = dp(8)
+                }
+            }
+        }
+        val host = field("عنوان البروكسي أو IP", current?.getOrNull(0) ?: "")
+        val port = field("Port", current?.getOrNull(1) ?: "", false).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        val username = field("اسم المستخدم (اختياري)", current?.getOrNull(2) ?: "")
+        val password = field("كلمة المرور (اختياري)", current?.getOrNull(3) ?: "", true)
+        val status = TextView(this).apply {
+            text = "يدعم SOCKS5 مع أو بدون مصادقة"
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        form.addView(host)
+        form.addView(port)
+        form.addView(username)
+        form.addView(password)
+        form.addView(status)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("إعداد بروكسي SOCKS5")
+            .setView(form)
+            .setNegativeButton("إغلاق", null)
+            .setNeutralButton("اختبار الاتصال", null)
+            .setPositiveButton("حفظ وتشغيل", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val h = host.text.toString().trim()
+                val p = port.text.toString().trim().toIntOrNull()
+                val u = username.text.toString()
+                val pw = password.text.toString()
+                if (h.isBlank() || p == null || p !in 1..65535) {
+                    status.text = "تأكد من العنوان والمنفذ"
+                    status.setTextColor(Color.RED)
+                    return@setOnClickListener
+                }
+                val ok = activateProxy(h, p, u, pw, true)
+                status.text = if (ok) "تم حفظ البروكسي وتشغيله" else "تعذر تشغيل البروكسي"
+                status.setTextColor(if (ok) gold else Color.RED)
+                if (ok) dialog.dismiss()
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                val h = host.text.toString().trim()
+                val p = port.text.toString().trim().toIntOrNull()
+                val u = username.text.toString()
+                val pw = password.text.toString()
+                if (h.isBlank() || p == null || p !in 1..65535) {
+                    status.text = "أدخل عنواناً ومنفذاً صحيحين أولاً"
+                    status.setTextColor(Color.RED)
+                    return@setOnClickListener
+                }
+                status.text = "جارٍ اختبار الاتصال..."
+                status.setTextColor(gold)
+                proxyExecutor.execute {
+                    val testBridge = Socks5ProxyBridge(h, p, u, pw)
+                    val result = try {
+                        testBridge.start()
+                        testBridge.testConnection()
+                    } catch (_: Exception) { false } finally {
+                        testBridge.stop()
+                    }
+                    runOnUiThread {
+                        if (!isFinishing && dialog.isShowing) {
+                            status.text = if (result) "نجح الاتصال بالبروكسي" else "فشل الاتصال؛ تحقق من البيانات أو نوع البروكسي"
+                            status.setTextColor(if (result) gold else Color.RED)
+                        }
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun activateProxy(host: String, port: Int, user: String, pass: String, save: Boolean): Boolean {
+        return try {
+            val bridge = Socks5ProxyBridge(host, port, user, pass)
+            bridge.start()
+            if (!profile.setProxy("socks5://127.0.0.1:${bridge.localPort}")) {
+                bridge.stop()
+                return false
+            }
+            profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DISABLE_NON_PROXIED_UDP)
+            proxyBridge?.stop()
+            proxyBridge = bridge
+            if (save) ProxyCredentialStore.save(this, host, port, user, pass)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun disableProxy() {
+        profile.clearProxy()
+        profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DEFAULT)
+        proxyBridge?.stop()
+        proxyBridge = null
+        ProxyCredentialStore.clear(this)
+        Toast.makeText(this, "تم إيقاف البروكسي", Toast.LENGTH_SHORT).show()
     }
 
     private fun confirmClearAllData() {
