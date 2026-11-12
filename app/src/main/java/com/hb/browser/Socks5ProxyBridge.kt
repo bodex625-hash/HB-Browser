@@ -134,7 +134,7 @@ internal class Socks5ProxyBridge(
 
             client.soTimeout = 0
             upstream.soTimeout = 0
-            val remote = upstream
+            val remote = upstream ?: return
             val finished = java.util.concurrent.CountDownLatch(2)
             workers.execute { pump(client, remote); finished.countDown() }
             workers.execute { pump(remote, client); finished.countDown() }
