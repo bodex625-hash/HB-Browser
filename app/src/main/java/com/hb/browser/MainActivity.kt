@@ -81,6 +81,7 @@ class MainActivity : Activity() {
 
         profile = CefriumProfile.getDefault()
         profile.setWebRtcIpHandlingPolicy(CefriumProfile.WEBRTC_DEFAULT)
+        restoreSavedProxy()
 
         buildInterface()
         createNewTab()
@@ -504,6 +505,10 @@ class MainActivity : Activity() {
             .setNeutralButton("اختبار الاتصال", null)
             .setPositiveButton("حفظ وتشغيل", null)
             .create()
+        form.addView(makeAction("إيقاف البروكسي", 160, 14) {
+            disableProxy()
+            dialog.dismiss()
+        })
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val h = host.text.toString().trim()
