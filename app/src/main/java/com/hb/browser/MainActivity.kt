@@ -60,7 +60,14 @@ class MainActivity : Activity() {
                 "CONNECTED" -> {
                     proxyConnectionPending = false
                     removeProxyOverlay()
-                    if (tabs.isEmpty()) createNewTab() else activeTab?.browser?.reload()
+                    val current = activeTab
+                    if (current == null) {
+                        createNewTab()
+                    } else if (current.url.isBlank() || current.url == "about:blank") {
+                        current.browser.loadUrl("https://www.google.com")
+                    } else {
+                        current.browser.reload()
+                    }
                     Toast.makeText(this@MainActivity, "تم الاتصال بالبروكسي والتحقق من الإنترنت عبر VPN", Toast.LENGTH_LONG).show()
                 }
                 "FAILED" -> {
@@ -118,15 +125,20 @@ class MainActivity : Activity() {
             registerReceiver(proxyStateReceiver, filter)
         }
 
+        // Create the browser surface before starting VPN. This keeps MainActivity
+        // alive and ready while Android grants VPN permission and the tunnel is tested.
+        // The initial page stays blank so no website traffic is sent before verification.
+        createNewTab("about:blank")
+
         val savedProxy = ProxyCredentialStore.load(this)
         if (savedProxy != null && savedProxy.size >= 4 &&
             savedProxy[0].isNotBlank() && (savedProxy[1].toIntOrNull()?.let { it in 1..65535 } == true)
         ) {
             proxyConnectionPending = true
-            showProxyConnectingOverlay("جارٍ تشغيل البروكسي المحفوظ قبل فتح المتصفح...")
+            showProxyConnectingOverlay("جارٍ تشغيل البروكسي المحفوظ قبل فتح صفحات الإنترنت...")
             requestProxyStart()
         } else {
-            createNewTab()
+            activeTab?.browser?.loadUrl("https://www.google.com")
         }
     }
 
