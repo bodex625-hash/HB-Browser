@@ -94,24 +94,24 @@ internal class Socks5ProxyBridge(
             uo.write(if (hasCredentials) byteArrayOf(5, 1, 2) else byteArrayOf(5, 1, 0))
             uo.flush()
             val methodReply = readFully(ui, 2)
-            if (methodReply[0].toInt() != 5 || methodReply[1].toInt() == 0xff) {
+            if ((methodReply[0].toInt() and 0xff) != 5 || (methodReply[1].toInt() and 0xff) == 0xff) {
                 co.write(byteArrayOf(5, 5, 0, 1, 0, 0, 0, 0, 0, 0))
                 co.flush()
                 return
             }
-            if (methodReply[1].toInt() == 2) {
+            if ((methodReply[1].toInt() and 0xff) == 2) {
                 val u = username.toByteArray(Charsets.UTF_8)
                 val p = password.toByteArray(Charsets.UTF_8)
                 require(u.size <= 255 && p.size <= 255)
                 uo.writeByte(1); uo.writeByte(u.size); uo.write(u)
                 uo.writeByte(p.size); uo.write(p); uo.flush()
                 val authReply = readFully(ui, 2)
-                if (authReply[1].toInt() != 0) {
+                if ((authReply[1].toInt() and 0xff) != 0) {
                     co.write(byteArrayOf(5, 5, 0, 1, 0, 0, 0, 0, 0, 0))
                     co.flush()
                     return
                 }
-            } else if (methodReply[1].toInt() != 0) {
+            } else if ((methodReply[1].toInt() and 0xff) != 0) {
                 co.write(byteArrayOf(5, 5, 0, 1, 0, 0, 0, 0, 0, 0))
                 co.flush()
                 return
@@ -130,7 +130,7 @@ internal class Socks5ProxyBridge(
             }
             val replyPort = readFully(ui, 2)
             co.write(replyHead); co.write(replyAddress); co.write(replyPort); co.flush()
-            if (replyHead[1].toInt() != 0) return
+            if ((replyHead[1].toInt() and 0xff) != 0) return
 
             client.soTimeout = 0
             upstream.soTimeout = 0
@@ -196,6 +196,7 @@ internal class Socks5ProxyBridge(
         server = null
         sockets.forEach { try { it.close() } catch (_: Exception) {} }
         sockets.clear()
+        workers.shutdownNow()
     }
 }
 
