@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.hb.browser"
-    compileSdk = 37
+    compileSdk = 37\n    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "com.hb.browser"
@@ -16,6 +16,12 @@ android {
         buildConfigField("String", "HB_LICENSE_API", "\"https://hb-browser-license.bodex625.workers.dev/api\"")
         ndk {
             abiFilters += setOf("arm64-v8a")
+        }
+    }
+
+    externalNativeBuild {
+        ndkBuild {
+            path = file("src/main/jni/Android.mk")
         }
     }
 
