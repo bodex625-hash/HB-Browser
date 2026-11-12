@@ -83,11 +83,6 @@ class HBSocks5VpnService : VpnService() {
         }
 
         val builder = Builder()
-            // Keep this app outside its own TUN interface. The native SOCKS5
-            // transport runs in this app process; routing it back into the TUN
-            // creates a routing loop and prevents the proxy server being reached.
-            .setBlocking(false)
-            .addDisallowedApplication(packageName)
             .setSession("HB Browser SOCKS5")
             .setMtu(1500)
             .addAddress("198.18.0.1", 15)
