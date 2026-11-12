@@ -5,7 +5,8 @@ plugins {
 
 android {
     namespace = "com.hb.browser"
-    compileSdk = 37\n    ndkVersion = "27.2.12479018"
+    compileSdk = 37
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "com.hb.browser"
